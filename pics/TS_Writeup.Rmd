@@ -1,0 +1,1389 @@
+---
+title: "Card Kingdom Buy List Forecast"
+author: "Wolf Of Tin Street"
+date: "2/3/2021"
+output: 
+    pdf_document:
+        latex_engine: xelatex
+        toc: yes
+        toc_depth: "3"
+    html_document:
+        code_folding: none
+        df_print: paged
+        highlight: tango
+        number_sections: yes
+        theme: flatly
+        toc: yes
+        toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,warning = FALSE,message=FALSE)
+pacman::p_load(tidyverse,readr,httr,jsonlite,ranger,timetk,lubridate,bigrquery,modeltime,modeltime.ensemble,modeltime.gluonts,recipes,rsample,kernlab,glmnet,kknn,earth,tidymodels,rules,doFuture,future,tune,plotly,googlesheets4,googledrive)
+invisible(right <- function(text, num_char) {
+    substr(text, nchar(text) - (num_char-1), nchar(text))
+})
+options(httr_oob_default=TRUE) 
+options(gargle_oauth_email = "pachun95@gmail.com")
+drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+
+gaeas_cradle <- function(email){
+    con <- dbConnect(
+        bigrquery::bigquery(),
+        project = "gaeas-cradle",
+        dataset = "premiums",
+        billing = "gaeas-cradle"
+    )
+    bq_auth(email = email, use_oob = TRUE)
+    options(scipen = 20)
+    con
+}
+
+Ensemble_By_Range = function(recombined_tbl,days){
+    results = recombined_tbl %>%
+        filter(Date == Sys.Date() | Date == (Sys.Date()+days) ) %>%
+        select(Key, .value, Date,mae) %>%
+        arrange(Key,Date) %>%
+        mutate(lagged = round(lag(.value, 1),1) ,
+               .value = round(.value,1)) %>%
+        mutate(diff = round(.value - lagged,1)) %>%
+        filter(Date == (Sys.Date()+days))%>% 
+        filter(diff > 0) %>% 
+        mutate(Current_BL = lagged,
+               Forecast_BL = .value,
+               Forecasted_Gains_Worst = round(diff - round(mae,1),2),
+               Forecasted_Gains = round(diff,2),
+               Forecasted_Gains_Best = round(diff + round(mae,1),2),
+               Forecasted_Growth = round(diff/lagged,2)) %>%
+        select(-.value,-mae,-diff,-lagged) %>%
+        filter(Forecasted_Growth >= .15) %>%
+        arrange(desc(Forecasted_Growth),desc(Forecasted_Gains)) #%>% 
+    #filter((Current_BL * 5) >= Forecast_BL)
+    
+    return(results)
+}
+
+
+registerDoFuture()
+n_cores = parallel::detectCores()
+plan(strategy = cluster,
+     workers  = parallel::makeCluster(n_cores-1) )
+```
+
+# Overview
+
+The goal of this analysis is to predict what the buy list offer will be for any given card within a 28 day horizon period. A combination of both machine and deep learning methodologies will be utilized to take advantage of previously undocumented (or untracked) market indicators for this effect. In order to obtain external regressors as well as other attribute unique to each card, I will be taking advantage of not only my own scrapers and database storage, but the invaluable help and resources found over at **mtgjson.com**. If you have not investigated this resource yet, I'd highly advise you do so.
+
+## MTGJSON Roster Creation
+
+I begin most, if not all, of my magic the gathering scripts by retreiving the most recent **AllPrintings** JSON from **https://mtgjson.com/downloads/all-files/#AllPrintings**. The most important reason for doing this is to ensure an accurate and current roster for all cards currently in circulation as well as early spoilers as they are released. For specifics on the fields themselves, they are incredibly well documented on the site, but I will point out the specific fields that I will be pulling out for later use.
+
+**rdate** - The release date of every set
+**uuid**  - MTGJSON's unique identifier for each card (foils would & do require slight adjustments)
+**scryfall id** - Another Identifier for scryfall to recognize
+**mcmid** - Magic Card Market's unique ID's for correspondance with EU markets
+**tcg_ID** - TCG Marketplace unique identifier for correspondance with NA markets
+**ckid**,**ckid_f** - Unique identifiers for Card Kingdom
+**card** - card name
+**set** - edition/set the card belongs to
+**abbr** - edition's three letter abbreviation
+**rarity** - The rarity of the card (Mythic, Rare, Uncommon, Common)
+**number** - Card's unique set number, and increasingly needed field given the recent tendency to print multiple versions of the same card in each set
+**types** - A unique card attribute in the game. Instants, Enchantments, Planeswalkers, etc.
+**manacost** - The cost required to play the card in game
+**colors** - There are 5 main colors of cards in mtg (Blue(U),Black(B),Green(G),Red(R),White(W)) with an auxilliary Brown (B) for colorless cards.
+**hasFoil** - Binary, does this card have a foil version.
+**hasNonFoil** - Binary, does this card have a nonfoil edition (commonly seen with Commander products)
+**hasAlternate** - Binary, does this card have an alternate version. This is usually used as a **fishing** field to try and locate premium versions of cards that might be otherwise missed by looking at the **hasFoil** field.
+**isPromo** - Binary, akin to the **hasAlternate** but tends to be looking more often than not for pre-release versions, or date stamped cards, that can only be obtained during special events surrounding set releases.
+
+**standard**,**pioneer**,**modern**,**legacy**,**commander**,**pauper** - Binary fields for card legality in these specific, most popular, formats of play for the game.
+
+**isReserved** - Binary, is this card part of the reserved list. Love it or hate it, this is a very important financial field. 
+**edhrec_Rank** - Grouping of how many decks players self report to be including cards in. An esoteric and often unwieldly number to gauge consumer demand when access to financial metrics are not available. Given that most vendors do not have sales data outside their own, this can often be a powerful metric given the collective market continues to misuse &/or rely on it over stronger indicators.
+**legendary_commander** - Is the card specifically a legendary creature, thus allowing it to be used as a commander in EDH (EDH == commander)
+
+**Key** - Arbitrary field I create for labeling. Combines the **card**,**set**,**rarity**,**hasFoil**,&**number** fields together as a human readable key. I could easily get away with simply **set**,**hasfoil**,&**number**, however, I, personally, enjoy the additional info provided. 
+```{r pressure, echo=FALSE, message=F, warning=F}
+library(jsonlite)
+content <- fromJSON("https://mtgjson.com/api/v5/AllPrintings.json")
+library(tidyjson)
+
+sets_of_interest <- content$data %>% names() %>% as.list()
+sets_of_interest <- sets_of_interest[sets_of_interest != "AMH1"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "F18"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "L12"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "L13"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "L14"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "L15"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "L16"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "L17"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "PLNY"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "PR2"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "AZNR"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "MZNR"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "SZNR"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "TBTH"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "TDAG"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "TFTH"]
+sets_of_interest <- sets_of_interest[sets_of_interest != "FJMP"]
+#sets_of_interest <- sets_of_interest[sets_of_interest != "KHC"]
+
+#sets_of_interest %>% unlist()
+#temp$data$cards$leadershipSkills$commander
+
+Card_Dictionary <- NULL
+
+for(set in sets_of_interest){
+  suppressWarnings( 
+    tryCatch({
+        temp <- fromJSON(paste("https://mtgjson.com/api/v5/",set,".json",sep=""))
+        if(temp$data$isOnlineOnly == F){
+            rdate <- temp$data$releaseDate
+            if(is.null(rdate)==T){rdate = temp$data$releaseDate}
+            uuid <- temp$data$cards$uuid
+            if(is.null(uuid)==T){uuid = NA}
+            scryfall_id <- temp$data$cards$identifiers$scryfallId
+            if(is.null(scryfall_id)==T){scryfall_id = NA}
+            mcmid <- temp$data$cards$identifiers$mcmId
+            if(is.null(mcmid)==T){mcmid = NA}
+            tcg_ID <- temp$data$cards$identifiers$tcgplayerProductId
+            if(is.null(tcg_ID)==T){tcg_ID = NA}
+            card <- temp$data$cards$name
+            if(is.null(card)==T){card = NA}
+            set <- temp$data$name
+            if(is.null(set)==T){set = NA}
+            abbr <- temp$data$code
+            if(is.null(abbr)==T){abbr = NA}
+            rarity <- temp$data$cards$rarity
+            if(is.null(rarity)==T){rarity = NA}
+            number <- temp$data$cards$number
+            if(is.null(number)==T){number = NA}
+            types <- temp$data$cards$types
+            if(is.null(types)==T){types = NA}
+            manaCost <- temp$data$cards$convertedManaCost
+            if(is.null(manaCost)==T){manaCost = NA}
+            colors <- unlist(temp$data$cards$colors)
+            if(is.null(colors)==T){colors = NA}
+            keywords <- temp$data$cards$keywords
+            if(is.null(keywords)==T){keywords = NA}
+            hasFoil <- temp$data$cards$hasFoil
+            if(is.null(hasFoil)==T){hasFoil = NA}
+            hasNonFoil <- temp$data$cards$hasNonFoil
+            if(is.null(hasNonFoil)==T){hasNonFoil = NA}
+            isAlternative <- temp$data$cards$isAlternative
+            if(is.null(isAlternative)==T){isAlternative = NA}
+            # variations <- temp$cards$variations
+            # if(is.null(variations)==T){variations = NA}
+            standard <- temp$cards$legalities$standard
+            if(is.null(standard)==T){standard = NA}
+            pioneer <- temp$data$cards$legalities$pioneer
+            if(is.null(pioneer)==T){pioneer = NA}
+            modern <- temp$data$cards$legalities$modern
+            if(is.null(modern)==T){modern = NA}
+            legacy <- temp$data$cards$legalities$legacy
+            if(is.null(legacy)==T){legacy = NA}
+            commander <- temp$data$cards$legalities$commander
+            if(is.null(commander)==T){commander = NA}
+            pauper <- temp$data$cards$legalities$pauper
+            if(is.null(pauper)==T){pauper = NA}
+            ckid <- temp$data$cards$identifiers$cardKingdomId
+            if(is.null(ckid)==T){ckid = NA}
+            ckid_f <- temp$data$cards$identifiers$cardKingdomFoilId
+            if(is.null(ckid_f)==T){ckid_f = NA}
+            edhrecRank <- temp$data$cards$edhrecRank
+            if(is.null(edhrecRank)==T){edhrecRank = NA}
+            Printings <- str_count(temp$data$cards$printings,'"')/2
+            if(is.null(Printings)==T){Printings = NA}
+            isPromo = temp$data$cards$isPromo
+            if(is.null(isPromo)==T){isPromo = NA}
+            isReserved = temp$data$cards$isReserved
+            if(is.null(isReserved)==T){isReserved = NA}
+            commander <- temp$data$cards$leadershipSkills$commander
+            if(is.null(commander)==T){commander = NA}
+            info <- cbind(rdate,uuid,scryfall_id,mcmid,tcg_ID,card,set,abbr,rarity,number,types,manaCost,colors,hasFoil,hasNonFoil,isAlternative,standard,pioneer,modern,legacy,commander,pauper,ckid,ckid_f,edhrecRank,Printings,isPromo,isReserved,commander)
+            Card_Dictionary <- rbind(Card_Dictionary,info)
+        }
+    },error=function(e){print(paste("Error with set:",set))}))
+  }
+
+
+Card_Dictionary_backup <- Card_Dictionary
+Card_Dictionary <- Card_Dictionary_backup
+Card_Dictionary <- as.data.frame(Card_Dictionary)
+Card_Dictionary$rdate <- unlist(Card_Dictionary[1])
+Card_Dictionary$uuid <- unlist(Card_Dictionary[2])
+Card_Dictionary$scryfall_id <- unlist(Card_Dictionary[3])
+Card_Dictionary$mcmid <- unlist(Card_Dictionary[4])
+Card_Dictionary$tcg_ID<- unlist(Card_Dictionary[5])
+Card_Dictionary$card <- unlist(Card_Dictionary[6])
+Card_Dictionary$set <- unlist(Card_Dictionary[7])
+Card_Dictionary$abbr <- unlist(Card_Dictionary[8])
+Card_Dictionary$rarity <- unlist(Card_Dictionary[9])
+Card_Dictionary$number <- unlist(Card_Dictionary[10])
+Card_Dictionary$types <- unlist(ifelse(str_count(Card_Dictionary$types,'"') >=3,"Multiple",Card_Dictionary$types))
+
+Card_Dictionary$manaCost <- unlist(Card_Dictionary[12])
+Card_Dictionary$colors <- unlist(Card_Dictionary$colors)
+#Card_Dictionary$colors <- unlist(ifelse(identical(unlist(Card_Dictionary$colors),character(0))==T,NA,unlist(Card_Dictionary$colors)))
+Card_Dictionary$hasFoil <- unlist(Card_Dictionary[14])
+Card_Dictionary$hasNonFoil <- unlist(Card_Dictionary[15])
+Card_Dictionary$isAlternative <- unlist(Card_Dictionary[16])
+#Card_Dictionary$variations <- unlist(Card_Dictionary[15])
+Card_Dictionary$standard <- as.character(unlist(Card_Dictionary[17]))
+Card_Dictionary$pioneer <- unlist(Card_Dictionary[18])
+Card_Dictionary$modern <- unlist(Card_Dictionary[19])
+Card_Dictionary$legacy <- unlist(Card_Dictionary[20])
+Card_Dictionary$commander <- as.character(unlist(Card_Dictionary[21]))
+Card_Dictionary$pauper <- unlist(Card_Dictionary[22])
+Card_Dictionary$ckid <- unlist(Card_Dictionary[23])
+Card_Dictionary$ckid_f <- unlist(Card_Dictionary[24])
+Card_Dictionary$edhrecRank <- unlist(Card_Dictionary[25])
+Card_Dictionary$Printings <- unlist(Card_Dictionary[26])
+Card_Dictionary$isPromo <- as.character(unlist(Card_Dictionary[27]))
+Card_Dictionary$isReserved <- as.character(unlist(Card_Dictionary[28]))
+Card_Dictionary$legendary_commander <- as.character(unlist(Card_Dictionary[29]))
+#Card_Dictionary <- Card_Dictionary[-11]
+#Card_Dictionary <- Card_Dictionary[-13]
+Card_Dictionary$rarity <- ifelse(Card_Dictionary$rarity == "mythic","M",
+                                 ifelse(Card_Dictionary$rarity == "rare","R",
+                                        ifelse(Card_Dictionary$rarity == "uncommon","U",
+                                               ifelse(Card_Dictionary$rarity == "common","C", Card_Dictionary$rarity))))
+
+Special_Card_Dictionary <- Card_Dictionary[grepl("\\★",Card_Dictionary$number),]
+Nonfoil_Card_Dictionary <- Card_Dictionary[!grepl("\\★",Card_Dictionary$number),]
+
+Nonfoil_Only <- Nonfoil_Card_Dictionary[which(Nonfoil_Card_Dictionary$hasNonFoil == T & Nonfoil_Card_Dictionary$hasFoil == F),]
+Nonfoil_Only$hasFoil <- ""
+Nonfoil_Only$hasNonFoil <- ""
+Foil_Only <- Nonfoil_Card_Dictionary[which(Nonfoil_Card_Dictionary$hasNonFoil == F & Nonfoil_Card_Dictionary$hasFoil == T),]
+Foil_Only$hasFoil <- " FOIL"
+Foil_Only$hasNonFoil <- ""
+Nonfoil_Halfs <- Nonfoil_Card_Dictionary[which(Nonfoil_Card_Dictionary$hasNonFoil == T & Nonfoil_Card_Dictionary$hasFoil == T),]
+Nonfoil_Halfs$hasFoil <- ""
+Nonfoil_Halfs$hasNonFoil <- ""
+Foil_Halfs <- Nonfoil_Card_Dictionary[which(Nonfoil_Card_Dictionary$hasNonFoil == T & Nonfoil_Card_Dictionary$hasFoil == T),]
+Foil_Halfs$hasFoil <- " FOIL"
+Foil_Halfs$hasNonFoil <- ""
+
+Entire_Dictionary <- rbind(Nonfoil_Only, Foil_Only)
+Entire_Dictionary <- rbind(Entire_Dictionary,Nonfoil_Halfs)
+Entire_Dictionary <- rbind(Entire_Dictionary,Foil_Halfs)
+Entire_Dictionary$Key <- paste(Entire_Dictionary$card,Entire_Dictionary$set,Entire_Dictionary$rarity,Entire_Dictionary$hasFoil,Entire_Dictionary$number,sep="")
+Entire_Dictionary$Working_Key <- paste(Entire_Dictionary$card,Entire_Dictionary$set,Entire_Dictionary$rarity,Entire_Dictionary$hasFoil,sep="")
+names(Entire_Dictionary)[21] <- "commander_legal"
+
+
+```
+
+### Local Uploads
+
+One of the many difficulties with Magic the Gathering e-commerce comparisons is that pretty much every site uses different set or edition names. By attempting to convert them all, whatever their version, back to the MTGJSON spelling gives us a unified game plan for normalizing for comparison. I have a local csv that I update to perform this task, however, **Koda** over at **https://github.com/kodabb/mtgban-website** has done a far superior job at scripting set conversions to MTGJSON, including as well the matching of the dreaded **promo edition**'s that (I believe ought to be) notoriously all over the place between vendors. 
+
+I also save to CSV and BQ (bigquery) the latest rendition of the MTGJSON Roster to ensure I always have some form of backup in the most up to date state as possible.
+
+```{r}
+Sets                  = read.csv("/home/cujo253/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+ck_conversion         = read.csv("/home/cujo253/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
+Updated_Tracking_Keys = Entire_Dictionary                                                     %>% 
+    replace_na(list(Foil = ""))                                           %>%
+    mutate(card          = gsub("\\s\\/\\/.*","",card)                      ,
+           Key           = trimws(paste(card,set,rarity," ",hasFoil,sep="")),
+           Semi          = paste(card,set,sep="")) 
+
+```
+
+## Datebase Pulls
+
+I store my data in a BQ database in the cloud, as I am most familiar with that format and it suites my convenience of working off half a dozen droplets for mtg by allowing that information to be accessible at all times.
+
+Now that I have an overall roster from MTGJSON and conversions elements in tibble format, I pull in historical market data from the different vendors.
+
+Given that there are, currently, 56,000+ MTG cards in print, we have to use some kind of metric for creating a short pool of cards to review and forecast on.
+
+In prior attempts, I would spend 8+ hours performing basic forecasting algorithms on single metrics (eg - Holts-Winter) on historical Buy List values only to forecast future buy list offers. This was not only inefficient and inaccurate in terms of accuracy, but time consumption as well, and it did not take into account market factors that we can reasonably expect to have an impact on the market place. 
+
+Increased complexity invariably results in longer processing periods, and given this current methodology, it will take 18 hours to perform apporximately 3000 forecasts given parallel processing with 8 cores.
+
+### Roster Addendum
+
+The first task is to convert the **rdates** into a binary column to align with the time series format (each day in the historical or future window will get a 0 if not set released on that day, or a 1 if a set did release).
+
+While the exact content of future sets cannot be known without insider or elicit information, we can include this element as an external regressor for gauging or explaining random price volatilites for certain cards if they occur in connection to a future set release date. Given our historical data used for modeling goes back over 240 days, we can reasonably expect to have at least 3 (if not more) set releases to help train/teach the model on this particular element. 
+
+```{r}
+con                   = gaeas_cradle("wolfoftinstreet@gmail.com")
+statement             = paste("SELECT DISTINCT rdate, a.set FROM `gaeas-cradle.roster.mtgjson`a ORDER BY rdate desc")
+
+set_dates_xreg        = dbSendQuery(con, statement = statement) %>% 
+    dbFetch(., n = -1)                      %>% 
+    distinct()                              %>% 
+    mutate(set_release = 1, 
+           rdate = ymd(rdate))                   %>% 
+    pad_by_time(.date_var =rdate) %>%
+    select(-set)                            %>% 
+    replace(is.na(.),0)
+```
+
+### Short List Creation
+
+Since our end goal is predicting buy list measures, I elected to create an initial pool of any card that had a buy list offer over 50% vs their internal retail measure within the prior 8 months (240 days). As a short aside, Card Kingdom offers do not exceed 67% of what they will turn around and retail the card for, and conversely they tend not to drop below 15%. There are case exceptions to this, COVID lock down and individual high revenue generators (Sol Ring we're looking at you) but that is the general rule of thumb. So by pulling any card above this 50% threshold we are really narrowing down the higher performers. 
+
+
+A main goal is to try and locate and purchase cards at or below buy list, and it is not a realistic goal to expect, outside of collection purchases, to be able to locate cards that are selling on the market (generally a minimum of 20-100% higher price points) further below standing offers.
+
+
+```{r}
+statement <- paste(
+    'SELECT a.Key, number, Param param 
+  FROM `gaeas-cradle.ck_funny_money.*` a
+  LEFT JOIN `gaeas-cradle.roster.mtgjson` b on b.tcg_id = a.Param
+    WHERE CK_Backing <= .50 and Param is not NULL and 
+    _Table_Suffix between 
+    FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY)) AND 
+    FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL -1 DAY))  ',
+    sep = ""
+)
+
+kpi_query <- dbSendQuery(con, statement = statement) %>% dbFetch(., n = -1) %>% distinct() 
+kpi_query <- kpi_query %>% drop_na()
+kpi_query
+Short_list_params = NULL
+for(i in unique(kpi_query$param)){
+    Short_list = paste('"',i,'",',sep="")
+    Short_list_params = paste(Short_list_params,Short_list,sep="")
+}
+
+Short_list_params = gsub(",$","",Short_list_params)
+#view(Short_list_params)
+```
+
+Now that we have a broader list of cards, we begin to further refine our pool. Percentages have a disproportionate effect on lower value cards, so I factor out any cards that average, during the prior 6 month period, less than a $3.50 **updated from 1.50** . Cards of this value, while certainly a potential opportunity for future analysis, are simply too expensive in terms of time and computation for the potential reward. Offers in this lower range also tend to be highly volatile, so they are removed from the pool of option.
+
+Foils are also removed at this stage. Offers on foils are largely in name only. Most major vendors, Card Kingdom included, do not play 'fairly' with foils, in terms of grading. At best, upon submitting a NM (Near Mint) foil, you have to expect to receive only 80% of that actual offer, if not worse. Not wanting to play this game, I have elected to ignore foils as well.
+
+I will note, however, if one were to turn the axis of this forecasting onto predicting market values instead of buy list, I would highly advise the retention of foils as the open/broader market place has a different psychology and perception of foils as a whole and certainly price them in an inverse fashion to the large vendors.
+
+Lastly, I remove Commons. As the name indicates, they are largely worthless. The commons that are of value are either extremely old or were printed in unique products like intro or duel decks. Locating supply on these has proven very difficult, and given their low price point from the start, are yet another example of where others may well find a niche I am currently avoiding for the sake of speed and performance.
+
+```{r}
+statement <- paste(
+    "Select * ",
+    "FROM ",
+    "(SELECT a.param, AVG(a.BL) avg_bl ",
+    "FROM `gaeas-cradle.premiums.*` a ",
+    'WHERE Foil_Status not like "%FOIL%" and (Rarity like "R" or Rarity like "M" or Rarity like "U") and a.Set is not NULL and param is not NULL ',
+    'AND param in (',Short_list_params,') ',
+    'and _TABLE_SUFFIX BETWEEN ',
+    'FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 150 DAY)) AND ',
+    'FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL -1 DAY)) ',
+    'GROUP BY 1 ',
+    ") b ",
+    "WHERE avg_bl >= 1.50 ",
+    sep = ""
+)
+
+raw_params <- dbSendQuery(con, statement = statement) %>% dbFetch(., n = -1) %>% distinct()
+
+Short_list_params = NULL
+for(i in unique(raw_params$param)){
+    Short_list = paste('"',i,'",',sep="")
+    Short_list_params = paste(Short_list_params,Short_list,sep="")
+}
+
+Short_list_params = gsub(",$","",Short_list_params)
+```
+
+Lastly, with this list of unique identifiers, I pull in their corresponding market metrics. 
+These include:
+**BL** - Historical buy list offers
+**BL_QTY** - The amount of copies that were desired at that offer point on that particular day
+**MKT** - TCG Low Pricing. If we wanted to optimize our forecast for older/slower selling cards we'd likely want the market median as well.
+**Sellers** - The number of sellers (total) trying to sell the card on TCG's open market place
+**TCG_Rank** - The sales rate ranking of the cards via TCG's open market
+**CK_ADJ_Rank** - Card Kingdom's sales rate ranking.
+
+It is important to note that both CK and TCG present their **best sellers** by revenue generation for themselves. Comically, however, they do provide enough information to apply a two step conversion via super complex math (divide and multiply) to arrive at an expected sales rate (even if Card Kingdom doesn't update their top two best sellers out of either laziness or to try and throw folks off...)
+```{r}
+
+statement <- paste(
+    "SELECT CONCAT(Key,(DATE)) as dated_key, a.Key,a.Rarity,a.BL,a.Date ",
+    "FROM `gaeas-cradle.premiums.*` a ",
+    'WHERE Foil_Status not like "%FOIL%" and (Rarity like "R" or Rarity like "M" or Rarity like "U") and a.Set is not NULL and param is not NULL ',
+    'AND param in (',Short_list_params,') ',
+    'and _TABLE_SUFFIX BETWEEN ',
+    'FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 150 DAY)) AND ',
+    'FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL -1 DAY)) AND ',
+    'NOT regexp_contains(a.set, r"Alpha|Beta|Guild Kit") ',
+    "Order By Date asc; ",
+    sep = ""
+)
+
+raw_query <- dbSendQuery(con, statement = statement) %>% dbFetch(., n = -1) %>% distinct()
+
+loop_limit_raw = raw_query %>% select(Key) %>% distinct()
+
+statement <- paste(
+    "SELECT CONCAT(Key,DATE) as dated_key, Key, BL_QTY, MKT, Sellers, TCG_Rank, CK_ADJ_Rank ",
+    "FROM `gaeas-cradle.premiums.*` a ",
+    'WHERE Foil_Status not like "%FOIL%" and (Rarity like "R" or Rarity like "M" or Rarity like "U") and a.Set is not NULL and param is not NULL ',
+    'AND param in (',Short_list_params,') ',
+    'and _TABLE_SUFFIX BETWEEN ',
+    'FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 150 DAY)) AND ',
+    'FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL -1 DAY)) ',
+    "Order By Date asc; ",
+    sep = ""
+)
+
+lagged_raw_query <- dbSendQuery(con, statement = statement) %>% dbFetch(., n = -1) %>% distinct() %>% select(-Key)
+
+```
+## Forecasting Pre-processing
+
+Due to, once again, the computationally expensive processes we are about to employ, my 16gb 8 core computer cannot handle doing more than 50 forecasts at a time without crashing under the strain. Therefore, I've had to break up our pool of cards into 50 card buckets to make the computations manageable.
+
+I set a timer, mostly to satiate my own curiosity, but it also served to teach me early on how many forecasts/batches I could perform within a 24 hour span with the most recent market data available (settled at 2000 individual cards, or 40 batches of 50 individual cards).
+
+Next, given the amount of time and energy (even if it's the terminators energy and not mine), I really wanted to maximize the analysis (though this could all have been done after the loop and might improve the speed ever so slightly).
+
+**week_combined_tbl**: these allow me to break down which cards are predicted to simply go up in weeks 1,2,3, & 4. Sometimes pure consistency in direction is more telling than the granular forecast itself and I certainly want to keep a running tally and ranking of cards that are able to hit this base level of predicated growth.
+
+**expanded_all_forecasts**: Allows me to store the entire forecasts results in case I do want to play with them later or if I have an idea. I eventually store this in a temporary daily table in BQ so I always have new toys to tinker with, as well as a copy of the most recent forecasts in case tomorrows script should fail or my upload of results to the **mtgban.com** site fail, they will be redirected to this table to ensure no gaps in total data provision.
+
+**boxplot_ranking_tbl**: Creates a tier system, S-F & finally ignore, based off a boxplot visual in an effort to keep tier systems understandable. Important to note, the classification/rankings are based off expected growth with a base requirements of explained variance and an acceptable, but subjective, mae. A better classification would probably be one based off a gradation of both r^2 & mae, but folks like to see the money machine go "brrrrr" so I opted for this still of ranking mainly to draw attention to higher impact price changes, even if the confidence level might be lower than others.
+
+```{r}
+Start_Time = Sys.time()
+loop_limit = round(nrow(loop_limit_raw)/50,0)
+
+one_week_combined_tbl   = NULL
+two_week_combined_tbl   = NULL
+three_week_combined_tbl = NULL
+four_week_combined_tbl  = NULL
+expanded_all_forecasts  = NULL
+boxplot_ranking_tbl     = NULL
+a = 1
+b = 50
+
+raw_query %>% head(50)
+```
+
+
+Now that we have our empty tibbles and raw data, we can enter into the forecasting process. Due to the numerous transformations I wish to make before having our data in a palatable time series format, there are still some last minute alterations I need to do. Again, if I tried to apply these transformations outside the loop, my computer does not have the strength required, so yet another area for potential optimization.
+
+Step one is selecting the batch we want to take in from the raw data. I do this by setting **a=1** & **b=50** outside the loop, and have additive measures within, immediately following batch selection, **a = a + 50** & **b = b + 50** with a conditional to end the loop should **b** ever become equal to or greater than **2000**, our 24 cut off period.
+
+In limiting our selection, we also potential limit a very important field in our predictions, **rarity**. We need at least two different factors in the **rarity** column so the model is able to spot potential differences. In selecting only 50, it is extremely common to pull in only **rares** or **mythics** from one batch to the other. To account for this, I hack, a little bit, and append into our data the first **rare** or **mythic**, depending on which the batch requires, to provide at least on alternative example. This does mean that one **rare** or **mythic** will likely have a disproportionate effect on any such batch in every forecast. This is obviously an area where an improvement is very much desired, however, I'll take what I can get. Bucketing down to 50 is already sub-optimal, and this is just a further extension of that needed arrangement.
+
+```{r}
+this_round = (raw_query %>% select(Key) %>% distinct() %>% dplyr::slice(a:b)) 
+
+mythic_add = raw_query %>% filter(grepl(".*M$",Key)) %>% select(Key) %>% head(1)
+rare_add = raw_query %>% filter(grepl(".*R$",Key)) %>% select(Key) %>% head(1)
+
+if(right(this_round$Key,1) %>% unique() %>% length() == 1){this_round = rbind(this_round,mythic_add )}
+if(right(this_round$Key,1) %>% unique() %>% length() == 1){this_round = rbind(this_round,rare_add)}
+
+raw_list = raw_query %>% filter(Key %in% this_round$Key)  
+
+a = a + 50
+b = b + 50
+if(b > 2000){b = 2000}
+
+unique_card = raw_list %>% 
+    mutate(BL = ifelse(is.na(BL), (0), BL )) %>%
+    mutate(manaCost = Updated_Tracking_Keys$manaCost[match(Key,Updated_Tracking_Keys$Working_Key)],
+   types = Updated_Tracking_Keys$types[match(Key,Updated_Tracking_Keys$Working_Key)],
+   colors = Updated_Tracking_Keys$colors[match(Key,Updated_Tracking_Keys$Working_Key)],
+   printings = Updated_Tracking_Keys$Printings[match(Key,Updated_Tracking_Keys$Working_Key)],
+   edhrecRank = round(Updated_Tracking_Keys$edhrecRank[match(Key,Updated_Tracking_Keys$Working_Key)],-2),
+    ) 
+
+key_count = unique_card  %>% group_by(Key) %>% tally() %>% as.data.frame()
+unique_card = unique_card %>% left_join(key_count, by = c("Key"="Key")) %>% filter(n > 50) %>% select(-n)
+individual_keys = unique_card %>% select(Key) %>% distinct()
+```
+
+At this point, the card attributes from the MTGJSON roster are joined with the market data. 
+
+As yet another,but final, parameter, I require that every card, which ought to have 6 months of historical data have at least 100 days of non **NA** data. This immediately filters out cards from new sets. I do not wish to even begin to forecast for these cards until the market has at least 100 days to stabilize around these new cards. It also ensures that every card has a minimum amount of historical data when entering into the forecasting. It doesn't make much sense to try and use 10 days of market data to predict a future 30, the explained variance will be terrible and it will only serve to affect other potentially more accurate forecasts adversely.
+
+Now, we do our final modifications in the **full_tbl**.
+
+The first matter that needs to be addressed is that we have our full historical data set (or spreadsheet, if the verbiage makes it easier to visualize), but we need to add in date values for our desired forecast window (eg, how many days do we wish to forecast out) and fill in all other fields with **NA**'s. Once we have that, we can then address anomalies in our historical data set.
+
+Important disclaimer, there have been some days where my scrapers have crashed. 
+
+A time series review requires that every day has a value, otherwise it will fail to run. Therefor, I need to adjust/account for these potential anomalies. I do this via the **pad_by_time** function - which, is absolutely amazing. It will automatically fill in, very similar to the forecast window we appended to the bottom of our data frame for the future, all missing dates with a row and the missing date, and fill in all other fields with **NA**'s. This saves me a great deal of time and effort trying to hunt down the specifics and really allows for automation to occur smoothly.
+
+These blank fields, we will then use the **fill** function to fill in any **NA**'s from the pad by time with values from the prior day. Obviously, not ideal, however, needed for the algorithms and models to come to function. This does also have an unintended consequence, however. Now we've filled in all the values for our future columns with the most recent values that have occured. So if the market price today was $30, our forecast window, in this case 32 days, will all be filled in with this value. Obviously we do not know the future market values of the cards, so this will require some fixing.
+
+Before we get to that particular fix, we also need to to adjust the numbers in our time series. A best selling ranking of 36,000 on Card Kingdom does not numerically compare well with a buy list offer of 5 dollars and desired quantity of 75. So we have to normalize our data - smoosh every value into a number between 0 & 1 to minimize the effect the larger numbers might have. 
+
+Going a little out of order than the code, but to circle back to that fill error, we need to lag our numerical data. We benefit, in forecasting for buy list values over market values, that buy list values are the slowest to move. They are standing cash offers after all. So what we're actually going to do, is lag these numerical fields. I've chosen the time periods of 32,42, & 56 days to lag our metrics. In doing this, I create a new column for every numerical column, and push it down 32,42, & 56 days. So the oldest dates in our data, will now have **NA**'s in those fields, and the metrics that occurred on day one, don't appear to start until day 32,42, & 56.
+
+An analogy to what we're going to do would be if you take a book off your shelf. It has a sequel (*squints at Doors of Stone - Please Rothfuss help me out here*) that you just can't wait for. The story for the current book in your hand begins at Chapter 1, and ends at chapter 30. But we're greedy, and we really want to guess what will be in the next book. So we're going to change the game to try and predict what's in the next book. So we wipe clean all the pages in the book so there are no words. We then take all the writing that would have begun in Chapter 1 and overlay it onto where Chapter 5 previously was. In doing this, we'll end with 5 chapters at the end that not longer fit in our existing book. We then, essentially, pretend those 5 chapters are the start of the next awaited book. By doing this many, many times, we can try to actually predict the words that might go into the actual sequel when the book releases. 
+
+So why do we start at 32 days to lag? Because otherwise, we'd have filled in values from our most recent day of data being used as a potential future value for the data. We know this is incorrect from the off, but we still want to utilize our numerical data to the fullest extent we can. In forcing the values down an amount equal to our forecast window, we ensure the numerical values used are ALL real market values, and nothing I am filling in with placeholders. This is why we'll drop our original numerical columns at the very end, as they're using place holder metrics or containing NA's the will restrict the model from being able to run. We're also able to get away with this because we're forecasting for the buy list values, the last metric in the market, in my experience, to move in reframing a cards value into the future. Some may have legitimate arguments against that point, a strong one certainly being that the broader market sets prices far more than vendors, but I'll have those discussions elsewhere. For now, just be aware of that bias in the creation and usage of these metrics on my part.
+
+We have now also multiplied the amount of information we have to predict on. Each numerical column was previously one column, but now we an additional three for each, which is gradually, more and more, pushing those fill'ed in current values out of the data set, giving us more realistic data, albeit lagged, to try and predict forward on. We further compound this by providing even more lag'ed periods wherein we take the moving 3,7,& 14 day averages of each numerical value and their lags to try and smooth out the changes over time. This averaging will allow the data to smooth out occasional spikes and anomalies and allow us to observe far more gradual and consistent movement. Given all these duplications of the numeric fields, we can easily drop the original numeric columns, although, obviously, not our original target BL column which we did not fill in on, to now have a nice, clean, data frame/spreadsheet that meets all the time series requirements. Last but not least, I also added fourier transformations at the 14,28,56, & 84 day marks in an effort to try and detect possible recurring frequencies in card values for the given time periods. Given that we're batching these time series together and not performing manual review of the pACf and ACF graphs, these fourier features would be an element I'd like to eventually circle back on and attempt to either utilize ML via **tune()** to locate the optimal periods or tailor in a similar automated fashion that is more in line with the data itself as opposed to my pre-processed periods of arbitrary choice.
+
+```{r}
+# Training & Future Data Preparation ---------------------------------------------------------------------------------
+full_tbl = unique_card                                   %>%
+    group_by(Key)                                        %>% 
+    pad_by_time(Date, .by = "day", .pad_value = NA)      %>%
+    fill(BL, .direction = "down")                        %>%
+    ungroup()                                            %>%
+    group_by(Key)                                        %>%
+    future_frame(Date, .length_out = 32, .bind_data = T) %>%
+    ungroup()                                            %>%
+    left_join(set_dates_xreg, by = c("Date"="rdate"))    %>%
+    left_join(lagged_raw_query, by = c("dated_key"="dated_key")) %>%
+    distinct()                                           %>%
+    fill(Rarity,manaCost,types,colors,printings,edhrecRank,
+         BL_QTY,MKT,Sellers, TCG_Rank, CK_ADJ_Rank, .direction = "down")               %>%
+    ungroup()                                            %>%
+    mutate(BL          = log1p(BL),
+           BL_QTY      = log1p(BL_QTY),
+           MKT         = log1p(MKT),
+           Sellers     = log1p(Sellers),
+           TCG_Rank    = log1p(TCG_Rank),
+           CK_ADJ_Rank = log1p(CK_ADJ_Rank)
+    )                                                    %>%
+    select(-dated_key)                                   %>%
+    mutate(gap  = Date - lag(Date))                      %>% 
+    filter(gap != 0)                                     %>% 
+    mutate(Key  = as.factor(Key))                        %>%
+    select(-gap)                                         %>%
+    group_by(Key)                                        %>% 
+    group_split()                                        %>% 
+    map(.f = function(df){
+        df %>% 
+            arrange(Date)                                             %>% 
+            
+            tk_augment_fourier(Date    ,.period = c(14,28,56,84))       %>%
+            
+            tk_augment_lags(BL         , .lags = c(32,42,56))   %>%
+            
+            tk_augment_lags(BL_QTY     , .lags = c(32,42,56))   %>%
+            
+            tk_augment_lags(MKT        , .lags = c(32,42,56))   %>%
+            
+            tk_augment_lags(Sellers    , .lags = c(32,42,56))   %>%
+            
+            tk_augment_lags(TCG_Rank   , .lags = c(32,42,56))   %>%
+            
+            tk_augment_lags(CK_ADJ_Rank, .lags = c(32,42,56))   %>%
+            
+            #Slidify BL Lags
+            
+            tk_augment_slidify(BL_lag32              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            tk_augment_slidify(BL_lag42              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            tk_augment_slidify(BL_lag56              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            #Slidify BL QTY Lags
+            
+            tk_augment_slidify(BL_QTY_lag32              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            tk_augment_slidify(BL_QTY_lag42              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            tk_augment_slidify(BL_QTY_lag56              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>% 
+            #Slidify MKT Lags
+            
+            tk_augment_slidify(MKT_lag32              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            tk_augment_slidify(MKT_lag42              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            tk_augment_slidify(MKT_lag56              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            #Slidify Sellers Lags
+            
+            tk_augment_slidify(Sellers_lag32              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            tk_augment_slidify(Sellers_lag42              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            tk_augment_slidify(Sellers_lag56              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            #Slidify TCG_Rank Lags
+            
+            tk_augment_slidify(TCG_Rank_lag32              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            tk_augment_slidify(TCG_Rank_lag42              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            tk_augment_slidify(TCG_Rank_lag56              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            #Slidify CK_ADJ_Rank Lags
+            
+            tk_augment_slidify(CK_ADJ_Rank_lag32              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            
+            tk_augment_slidify(CK_ADJ_Rank_lag42              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          %>%
+            tk_augment_slidify(CK_ADJ_Rank_lag56              ,
+                               .f       = ~mean(.x,na.rm=T),
+                               .period  = c(3,7,14)  ,
+                               .partial = T          ,
+                               .align   = "right")          
+    })                                                  %>% 
+    bind_rows()                                         %>% 
+    rowid_to_column(var = "rowid") %>%
+  select(-BL_QTY,-MKT,-Sellers,-TCG_Rank,-CK_ADJ_Rank)                  
+        
+        full_tbl %>% colnames()
+```
+
+### Splits
+
+Now that we have our full, expanded data frame, we want to split it (70/30) into a training set, and a test set, in an effort to guage the accuracy of each forecasting methodology before ensembling, and later, applying to the future unknown to try and maximize our accuracy. 
+
+With our data split, we now have four data frames:
+1) **future tbl** - this table consists exclusively of the future days. In our case this table contains our 28 days in the future we wish to predict for
+2) **data_prepared_tbl** - our full 6 months of historical data
+3) **training(splits)**- This consists of the oldest 70% of our data only
+4) **testing(splits)** - This consists of the most recent 30% of our historical data
+
+On all of our future models we will use the accuracy measurements from testing our forecasts from the **training(splits)** on our known **testing(splits)** and estimating they will retain those levels of accuracy 9or similar) into the future.
+
+Next we need two **recipes()** created. We will be using 7 distinct models and algorithms, 5 Machine Learning based, and 2 Deep Learning, and each classification requires different instructions on how to deconstruct and treat each data frame for the algorithms underneath.
+
+```{r}
+# Data preparation, Splits, & Recipe --------------------------------------
+        
+        data_prepared_tbl = full_tbl %>% 
+            filter(!is.na(BL))       %>% 
+            drop_na()
+        #data_prepared_tbl %>% select(Rarity) %>% distinct()
+        
+        future_tbl =  full_tbl                                                          %>%
+            filter(is.na(BL))                                                           %>%
+            mutate(across(.cols = contains("_lag"), .fns = ~ ifelse(is.nan(.x),NA,.x))) %>%
+            fill(contains("_lag"), .direction = "down")
+        
+        splits = data_prepared_tbl %>% time_series_split(Date, assess = 32, cumulative = T)
+        
+        train_cleaned = training(splits)              %>%
+            group_by(Key)                             %>%
+            mutate(BL = ts_clean_vec(BL, period = 7)) %>%
+            ungroup()
+        
+        recipe_spec = recipe(BL ~., data = train_cleaned)                                    %>%
+            update_role(rowid, new_role = "indicator")                                       %>%
+            step_timeseries_signature(Date)                                                  %>%
+            step_rm(matches("(.xts$)|(.iso$)|(hour)|(minute)|(second)|(am.pm)|(Date_year)")) %>%
+            step_normalize(Date_index.num)                                                   %>%
+            step_other(Key)                                                                  %>%
+            step_dummy(all_nominal(), one_hot = T)
+        
+        recipe_spec_dl = recipe(BL ~ ., data = train_cleaned)                                    %>%
+            update_role(rowid, new_role = "indicator")                                       %>%
+            step_timeseries_signature(Date)                                                  %>%
+            step_rm(matches("(.xts$)|(.iso$)|(hour)|(minute)|(second)|(am.pm)|(Date_year)")) %>%
+            step_normalize(Date_index.num)                                                   %>%
+            step_dummy(Date_month.lbl, one_hot = T)                                          %>%
+            step_dummy(Date_wday.lbl, one_hot = T)
+        
+        #summary(recipe_spec)
+        summary(recipe_spec_dl)
+```
+
+
+
+## Forecasting
+
+### Models
+
+5 distinct models will be used, and 8 overall.
+
+1) Prophet_XGBoost 
+2) Ranger (Random Forests)
+3) Multiplicative Adaptive Regression (MARs) 
+
+Originally, XGBoost and Prophet were run individually as well, but the combined form of Prophet_XGBoost consistently out performed either model in their own right, so for the sake of performance and brevity, they were eventually filtered out.
+
+Also important to note, these initial three models are being utilized with their default parameters. Their metrics will be tuned later on, however MARs & Prophet XGBoost have a tendency to over fit after tuning. I retain the default and the tuned versions should they be top overall performers in the final ensemble, however. We will be calibrating, re-sampling, and refitting all non - deep learning models, and thus will rely on their general acurracy after those refinements.
+
+A summary for these models, since we are using the **modeltime** package, may be found here **https://www.business-science.io/code-tools/2020/06/29/introducing-modeltime.html**
+
+For deep learning we utilize two different forms of Deep AR
+4) LSTM Deep Ar
+5) ~~GRU Deep Ar~~ **Update** n_Beats now utilized given consistent LSTM over performance vs GRU.  
+
+```{r}
+# Models ------------------------------------------------------------------
+wflw_fit_prophet_boost = workflow()                                             %>%
+    add_model(spec = prophet_boost(seasonality_daily  = F,
+                                   seasonality_weekly = F,
+                                   seasonality_yearly = F)                      %>% 
+                  set_engine("prophet_xgboost"))                                %>%
+    add_recipe(recipe_spec)                                                     %>%
+    fit(train_cleaned)
+
+# wflw 4 - Random Forest
+wflw_fit_rf = workflow()                                                        %>%
+    add_model(spec = rand_forest(mode = "regression") %>% set_engine("ranger")) %>%
+    add_recipe(recipe_spec %>% update_role(Date, new_role = "indicator"))       %>%
+    fit(train_cleaned)
+
+# wflw 5 - MARS (Invaders!) 
+wflw_fit_mars = workflow()                                                      %>%
+    add_model(spec = mars(mode = "regression") %>% set_engine("earth"))         %>%
+    add_recipe(recipe_spec %>% update_role(Date, new_role = "indicator"))       %>%
+    fit(train_cleaned)
+#gc()
+wkflw_deepar_lstm = workflow() %>% add_model(
+  deep_ar(
+    id                    = "Key",
+    freq                  = "D",
+    prediction_length     = 32,
+    epochs                = 7,
+    num_batches_per_epoch = 50,
+    cell_type             = "lstm",
+    scale                 = T
+    )       %>%
+    
+    set_engine("gluonts_deepar"))    %>%
+  add_recipe(recipe_spec_dl)         %>%
+  fit(train_cleaned)
+
+# wflw 7 - Deep AR - GRU  
+wkflw_deepar_gru = workflow() %>% add_model(
+  deep_ar(
+    id                    = "Key",
+    freq                  = "D",
+    prediction_length     = 32,
+    epochs                = 7,
+    num_batches_per_epoch = 50,
+    cell_type             = "gru",
+    scale                 = T)       %>%
+    
+    set_engine("gluonts_deepar"))    %>%
+  add_recipe(recipe_spec_dl)         %>%
+  fit(train_cleaned) 
+
+
+
+all_models_tbl = modeltime_table(wflw_fit_prophet_boost,
+                                 wflw_fit_rf           ,
+                                 wflw_fit_mars)
+
+deep_ar_tbl = modeltime_table(wkflw_deepar_lstm,wkflw_deepar_gru) %>%
+  update_model_description(.model_id = 2,.new_model_desc ="DEEPAR - GRU") %>% 
+  update_model_description(.model_id = 1,.new_model_desc ="DEEPAR - LSTM")
+
+
+```
+
+
+Given the time constraints of re-sampling the Deep Ar epochs on the training data, we will not be performing that refinement on these two models. For reference, by resampling the AR models, computational time for a batch of 50 cards becomes 65 minutes. If we omit that re-sample, it is 20 minutes for a batch of 50 cards. The addition of this 40 minute refinement did not reveal a noticeable improvement in forecast accuracy, and was thus eventually omitted. The deep AR models actually tend to perform less well than more traditional algorithms, but I think that is likely due to the inadequate amount of historical data. 
+
+We then move on to tuning the Prophet_XGBoost, Ranger, & MARs models. For more detail on the parameters that require tuning, please see documentation for each model which can be found over at **https://www.tidymodels.org/find/parsnip/**. Also, we will be utilizing ~~3~~ **updated** to 7 K-folds for cross validation in tuning. This number could certainly be raised, but once again, time constraints play a major role. The additional k folds greatly increases the r-squared measurement which is a requirement later on, and thus the increased time dependencies was deemed worthwhile.
+
+```{r}
+# Resampling & Tuning -----------------------------------------------------
+
+# Set seed for reproducibility & assign 10 folds across 3 grids
+# These folds and grids are entirely dependent upon my VM's restrictions
+
+set.seed(253)
+resampled_kfolds = train_cleaned %>% vfold_cv(v = 3)    
+
+# XGBOOST hyper parameters
+# Create a Model with tune() instead of values
+# Allows R/Machine to zero in on best performing metrics
+
+model_spec_prophet_xgboost_tune = prophet_boost(
+  mode = "regression",
+  seasonality_daily  = F,
+  seasonality_weekly = F,
+  seasonality_yearly = F,
+  mtry = tune(),
+  trees = tune(),
+  min_n = tune(),
+  tree_depth = tune(),
+  learn_rate = tune()
+) %>%
+    set_engine("prophet_xgboost")
+
+# Same recipe as earlier (see data preparation)
+# Slight alteration for xgboost is converting Date
+# as an indicator column
+wflw_spec_prophet_xgboost_tune = workflow()    %>%
+    add_model(model_spec_prophet_xgboost_tune) %>%
+    add_recipe(recipe_spec)#         %>% 
+    #update_role(Date, new_role = "indicator")) 
+
+set.seed(253)
+tune_results_prophet_xgboost = wflw_spec_prophet_xgboost_tune %>% 
+    tune_grid(
+        resamples  = resampled_kfolds,
+        param_info = parameters(wflw_spec_prophet_xgboost_tune) %>% 
+            update( mtry       = learn_rate(range = c(15,50), trans = NULL)     ,
+                    trees      = trees(range = c(1,2000), trans = NULL)         ,
+                    min_n      = min_n(range(1,50))                             ,
+                    learn_rate = learn_rate(range = c(0.01,0.30), trans = NULL),
+                    tree_depth = tree_depth(range = c(1,50), trans = NULL))    ,
+                    grid       = 3                                              ,
+                    control    = control_grid(verbose = T, allow_par = T))
+
+# Metrics for the curious to visualize what has been chosen
+# by tune(). I generally like to peek.
+
+#tune_results_prophet_xgboost %>% show_best("rmse", n = Inf)
+
+#Finalize the workflow with the tune() values from our best model
+# "Best" is defined by lowest rmse.
+wflw_fit_prophet_xgboost_tune = wflw_spec_prophet_xgboost_tune           %>% 
+    finalize_workflow(select_best(tune_results_prophet_xgboost, "rmse")) %>%
+    fit(train_cleaned)
+
+# Random Forest -----------------------------------------------------------
+# Rinse Repeat for Random Forest ...
+model_spec_rf_tune = rand_forest(
+    mode           = "regression",
+    mtry           = tune(),
+    trees          = tune(),
+    min_n          = tune()) %>%
+    set_engine("ranger")
+
+wflw_spec_rf_tune = workflow()    %>%
+    add_model(model_spec_rf_tune) %>%
+    add_recipe(recipe_spec %>% 
+               update_role(Date, 
+                           new_role = "indicator"))
+
+set.seed(253)
+tune_results_rf = wflw_spec_rf_tune %>% 
+    tune_grid(
+        resamples  = resampled_kfolds             ,
+        param_info = parameters(wflw_spec_rf_tune),
+        grid       = 3                            ,
+        control    = control_grid(verbose = T     , 
+                                  allow_par = T)
+    )
+
+#tune_results_rf %>% show_best("rmse", n = Inf)
+
+wflw_fit_rf_tune = wflw_spec_rf_tune                        %>% 
+    finalize_workflow(select_best(tune_results_rf, "rmse")) %>%
+    fit(train_cleaned)
+
+
+# Earth Tuning ------------------------------------------------------------
+
+model_spec_mars_tune = mars(
+    mode           = "regression",
+    num_terms      = tune()      ,
+    prod_degree    = tune())     %>%
+    set_engine("earth")
+
+wflw_spec_mars_tune = workflow()    %>%
+    add_model(model_spec_mars_tune) %>%
+    add_recipe(recipe_spec %>% 
+               update_role(Date, 
+                           new_role = "indicator"))
+
+set.seed(253)
+tune_results_mars = wflw_spec_mars_tune %>% 
+    tune_grid(
+        resamples  = resampled_kfolds               ,
+        param_info = parameters(wflw_spec_mars_tune),
+        grid       = 3                              ,
+        control    = control_grid(verbose = F       , 
+                                  allow_par = T)
+    )
+
+#tune_results_mars %>% show_best("rmse", n = Inf)
+
+wflw_fit_mars_tune = wflw_spec_mars_tune                      %>% 
+    finalize_workflow(select_best(tune_results_mars, "rmse")) %>%
+    fit(train_cleaned)
+
+# Evaluate Panel Forecasts ------------------------------------------------
+
+# Pull our new tuned models into the fray.
+# Only the three most consistently performing models
+# were chosen due to time constraints.
+all_models_and_tuned_tbl = modeltime_table(
+    wflw_fit_prophet_xgboost_tune,
+    wflw_fit_rf_tune     ,
+    wflw_fit_mars_tune
+) %>% 
+    update_model_description(1, "PROPHET W/ XGB - Tuned") %>%
+    update_model_description(2, "RANGER - Tuned")  %>%
+    update_model_description(3, "EARTH - Tuned")   %>%
+    combine_modeltime_tables(all_models_tbl)
+
+        
+        
+        #Accuracy Check for the curious before we tune
+        print("Pre-tuning & Pre-resampling")
+        all_models_tbl %>% modeltime_accuracy(testing(splits)) %>% arrange(mae)
+```
+
+
+Once all the raw and tuned models have been created and combined into one table, they are re-sampled in an attempt to further improve accuracy across a maximum of 5 slice elements with a 17 day spread between each for the models not utilizing deep learning. 
+
+Given that we did not resample or cross validate the deep learning models, the accuracy metrics will need to be pulled, aligned, and combined to create a singular table with the accuracy metrics of all algorithms presently cleanly for comparison.
+
+The accuracy measurements, sorted by best **mae - mean absolute error** performance, will select the top 5 performing models for ensembling. The median instead of the mean, as the mean lead to consistent over fitting, and a manual weighting was not plausible for this automated procedure.
+
+```{r}
+# Resampling --------------------------------------------------------------
+resamples_tscv = train_cleaned %>% ungroup() %>%
+    time_series_cv(
+        assess      = 32,
+        skip        = 17,
+        cumulative  = T,
+        slice_limit = 5
+    )
+
+model_tuned_resample_tbl = all_models_and_tuned_tbl %>%
+    modeltime_fit_resamples(
+        resamples        = resamples_tscv,
+        control          = control_resamples(verbose = T, 
+                                             allow_par = T))
+        
+combined_model_accuracy = rbind(model_tuned_resample_tbl %>% modeltime_resample_accuracy() %>% select(-n) ,
+                                deep_ar_tbl %>% modeltime_accuracy(testing(splits))) %>% mutate(.model_id = seq(nrow(.)))
+
+print("Accuracy metrics post tuning & resampling")
+combined_model_accuracy %>% arrange(mae)
+
+# Ensemble Average --------------------------------------------------------
+
+# Selecting the top 5 of our 8 models for the current batch of forecasts
+models_to_keep_ensemble = combined_model_accuracy               %>% 
+                          arrange(mae)                          %>% 
+                          select(.model_id)                     %>% 
+                          head(n=5)
+# Interesting element here that can drastically change forecasts results
+# There are three options:
+# Ensemble Average  - Prone to over fitting, but, if we can get away with it ...
+# Ensemble Median   - My 'gold`i`locks' choice. 
+# Ensemble Weighted - Manually assign weights to the various models. Hard to
+#                     to gauge batch to batch given my machine's restrictions 
+
+ensemble_fit = all_models_and_tuned_tbl                      %>%
+  combine_modeltime_tables(deep_ar_tbl) %>%
+    filter(.model_id %in% models_to_keep_ensemble$.model_id) %>%
+    ensemble_average(type = "median")
+        
+```
+
+With the new ensemble model created, the accuracy metrics for each individual card may be reviewed and stored for an accuracy range on the final forecast.
+
+```{r}
+model_ensemble_tbl = modeltime_table(ensemble_fit) 
+
+model_ensemble_tbl %>% modeltime_accuracy(testing(splits))
+
+forecast_ensemble_tbl = model_ensemble_tbl              %>% 
+    modeltime_forecast(new_data    = testing(splits)    ,
+                       actual_data = data_prepared_tbl  ,
+                       keep_data   = T)                 %>%
+    mutate(across(.cols = c(.value, BL), .fns = expm1)) %>% 
+    group_by(Key)                                       %>% 
+    arrange(Key,Date) 
+
+# Visualizing Option, again:
+
+#forecast_ensemble_tbl %>%  group_by(Key) %>% plot_modeltime_forecast(.facet_ncol = 4)
+
+# Individual metrics for each element in the forecast:
+
+metrics  = forecast_ensemble_tbl %>% 
+    filter(.key == "prediction") %>%
+    select(Key, .value, BL)      %>%
+    group_by(Key)                %>%
+    summarize_accuracy_metrics(
+        truth      = BL,
+        estimate   = .value,
+        metric_set = metric_set(mae, rmse, rsq))
+
+
+rmse_to_keep = metrics %>% arrange(rmse) %>% mutate(rank = seq(nrow(.))) %>% filter(rank <= 20)
+
+
+# Sneak a peak:
+#metrics
+
+#Refit ----------------------------------------------------------------
+# Remember, we smoothed the BL data in our training split, so lets ensure
+# we remember to do so again here for the overall data to refit the models
+# on.
+data_prepared_tbl_cleaned = data_prepared_tbl                        %>% 
+                            group_by(Key)                            %>% 
+                            mutate(BL = ts_clean_vec(BL,period = 7)) %>% 
+                            ungroup()
+
+model_ensemble_refit_tbl = model_ensemble_tbl %>% 
+                           modeltime_refit(data_prepared_tbl_cleaned)
+
+# Visualization Option:
+
+model_ensemble_refit_tbl                %>% 
+    modeltime_forecast(new_data    = future_tbl        ,
+                       actual_data =  data_prepared_tbl,
+                       keep_data   = T) %>% 
+    mutate(.value = expm1(.value),
+           BL     = expm1(BL))          %>%
+    group_by(Key)                       %>% 
+    plot_modeltime_forecast(.smooth = F,  .interactive = F)
+
+recombined_tbl = NULL
+
+recombined_tbl = model_ensemble_refit_tbl %>% 
+    modeltime_forecast(new_data    = future_tbl       ,
+                       actual_data = data_prepared_tbl,
+                       keep_data   = T)   %>%
+    mutate(.value = expm1(.value), 
+           BL     = expm1(BL))            %>% 
+    left_join(
+        metrics                                       , 
+        by        = c("Key"="Key"))    
+
+ 
+```
+
+
+With our final model in hand, the ensemble model is retested against the **training(splits)** to gauge accuracy in a single data frame for every card, and is then refit to include the entirety of our historical data via the **data_prepared_tbl**.
+
+Once the refitting has been accomplished, the forecast results are now used to populate the **week_combined_tbl**, **expanded_all_forecasts** & **boxplot_ranking_tbl** data frames that were previously empty.
+
+```{r}
+one_week_results_tbl   = Ensemble_By_Range(recombined_tbl,7)
+        two_week_results_tbl   = Ensemble_By_Range(recombined_tbl,14)
+        three_week_results_tbl = Ensemble_By_Range(recombined_tbl,21)
+        four_week_results_tbl  = Ensemble_By_Range(recombined_tbl,28)
+        
+        one_week_combined_tbl   = rbind(one_week_combined_tbl,one_week_results_tbl)
+        two_week_combined_tbl   = rbind(two_week_combined_tbl,two_week_results_tbl)
+        three_week_combined_tbl = rbind(three_week_combined_tbl,three_week_results_tbl)
+        four_week_combined_tbl  = rbind(four_week_combined_tbl,four_week_results_tbl)
+        
+        
+        boxplot_tbl = raw_query %>% group_by(Key) %>% summarize(iqr = IQR(BL), range = fivenum(BL), sd = sd(BL)) %>% ungroup() %>%
+            left_join(recombined_tbl %>% filter(!grepl("ACTUAL",.model_desc)) %>% group_by(Key) %>% 
+                          mutate(max_forecast_value = max(.value), max_date = ifelse(max_forecast_value == .value, Date,NA)) %>% #filter(Date == max(Date)) %>% 
+                          select(-BL) %>% drop_na() %>%
+                          select(Key, max_forecast_value,Date), by = c("Key"="Key")) %>% drop_na() %>%
+            left_join(recombined_tbl %>% filter(grepl("ACTUAL",.model_desc)) %>% group_by(Key) %>%
+                          filter(Date == max(Date)) %>% select(Key,BL,mae,rmse,rsq), by = c("Key"="Key") ) %>%
+            mutate(mae_impact = round(mae/BL,4)) %>% filter(mae_impact <= .80 & rsq >= .35) %>% 
+            mutate(current_val = BL,plus_minus = mae) %>% select(-BL,-mae) %>% 
+            select(Key,current_val,iqr,range,sd,max_forecast_value,plus_minus,Date)
+        
+        boxplot_ranking_tbl = rbind(boxplot_ranking_tbl,boxplot_tbl)
+        boxplot_ranking_tbl %>% head(1)
+        
+        expanded_all_forecasts = rbind(expanded_all_forecasts,recombined_tbl)
+        
+        Round_End = Sys.time()
+
+Final_Time = Sys.time()
+print(Final_Time - Start_Time)
+
+```
+
+
+This process then repeats 40 times or until we exhaust all batches.
+
+
+## Forecast Analysis
+
+As the most publicly visible results of this forecasting effort, seen on the **mtgban.com** newspaper page, stem from the **boxplot_ranking_tbl** data frame, I think it's processes and steps should be better broken down to best understand the resulting tier structure.
+
+In the initial formation of the **boxplot_ranking_tbl** there were filtering steps that ought to be addressed.
+
+1) Select the date, for every card in the forecast, the ensemble model predicted it would reach it's max buy list offer. This could be anywhere in the 28 day forecast period. The result is a single day plucked from the larger forecast demonstrating when it is expected to hit max offer.
+
+2) We ensure that the +/- interval range is less than 80% of the cards own value. Once again, this serves to further flush out, more often than not, the lower value cards that are more susceptible to % volatility.
+
+3) I require either r-squared of at least ~~35%~~ **update** 50% OR an rmse that is the top 20 of the batch of 50 cards. In as close to regular speak as I can put it, the model needs to be confidant that it can explain at least 50% of the variability surrounding the data. Another way of putting this is I'll never get published for this, but hey, this degree of explained variability is still able to consistently generate correct predictions and drive revenue. A lot of this forecasting does come down to human psychology on the open market place, so the low r-squared value, while certainly not ideal, does not make me panic. I could raise this criteria as well to be higher, but I've found that the output begins to lose it's value in predicting actual movement moving beyond this cutoff point. The rmse allowance is more to open the door to more volatile cards that may be experiencing volatility, but that the model can still reasonably predict the outcome for.
+
+With this data frame, the final tier system is built. We just need to take our **boxplot_ranking_tbl** which has our max values, and combine it with a boxplot's measurements of the historical data for the card. These measurements include the interquartile range, the standard deviation,the median, and the outer limit value. This in combination with the known current value, the max forecasted value, and the +/- confidence range on the forescast will determine the tiers.
+
+**S**: 
+Max forecast must be larger than the historical median offer.
+Max forecast must be larger than the historical median offer + standard deviation.
+Max forecast must be larger than the historical median offer + IQR.
+Max forecast must be 30% greater than the current offer.
+Max forecast minus the +/- value must still be greater than the outer limit of the boxplot.
+Max forecast must be at least $2 higher than current value.
+The Max forecast must be at least 5 days out from present date to allow for a buying opportunity.
+
+**A**: 
+Max forecast must be larger than the historical median offer.
+Max forecast must be larger than the historical median offer + standard deviation.
+Max forecast must be larger than the historical median offer + IQR.
+Max forecast must be 15% greater than the current offer.
+Max forecast minus the +/- value must still be greater than the outer limit of the boxplot.
+Max forecast must be at least $1 higher than current value.
+The Max forecast must be at least 5 days out from present date to allow for a buying opportunity.
+
+**B**: 
+Max forecast must be larger than the historical median offer.
+Max forecast must be larger than the historical median offer + standard deviation.
+Max forecast must be 15% greater than the current offer.
+Max forecast minus the +/- value must still be greater than the outer limit of the boxplot.
+Max forecast must be at least $0.5 higher than current value.
+The Max forecast must be at least 5 days out from present date to allow for a buying opportunity.
+
+**C**: 
+Max forecast must be larger than the historical median offer.
+Max forecast must be larger than the historical median offer + IQR.
+Max forecast must be 15% greater than the current offer.
+Max forecast minus the +/- value must still be greater than the outer limit of the boxplot.
+Max forecast must be at least $0.5 higher than current value.
+The Max forecast must be at least 5 days out from present date to allow for a buying opportunity.
+
+**D**: 
+Max forecast must be larger than the historical median offer.
+Max forecast must be 10% greater than the current offer.
+Max forecast minus the +/- value must still be greater than the outer limit of the boxplot.
+Max forecast must be at least $0.5 higher than current value.
+The Max forecast must be at least 3 days out from present date to allow for a buying opportunity.
+
+**E**: 
+Max forecast must be larger than the historical median offer.
+Max forecast must be larger than current value.
+
+**F**:
+Max forecast must be larger than the historical median offer OR* larger than current value
+
+**Ignore**:
+Meets none of the above specifications.
+
+
+```{r}
+outer_range_boxplot_tbl = boxplot_ranking_tbl %>% group_by(Key) %>% slice(seq(5,n(),by = 5)) %>% ungroup()
+
+boxplot_overview_tbl = boxplot_ranking_tbl %>% left_join(outer_range_boxplot_tbl %>% select(Key,range) %>% distinct(),by = c("Key"="Key")) %>%
+  group_by(Key) %>%
+  mutate(median_val = range.x, outer_lim = max(range.y)) %>% select(-range.x,-range.y) %>%
+  select(Key,current_val,iqr,sd,median_val,outer_lim,max_forecast_value,plus_minus,Date) %>% ungroup() %>% distinct()
+
+
+grand_slam_tbl = boxplot_overview_tbl %>% group_by(Key) %>% slice(seq(3,n(),by = 5)) %>% ungroup() %>%
+    mutate(Classification = 
+                    ifelse(   (max_forecast_value > median_val)
+                             &
+                              (max_forecast_value > (median_val + sd))
+                             &
+                              (max_forecast_value > (median_val + iqr))
+                             &
+                              (max_forecast_value >= (current_val * 1.3) )
+                             &
+                              ((max_forecast_value - plus_minus) >= outer_lim)
+                             &
+                              ((Date - Sys.Date()) >= 5), 
+                    "S",
+                    ifelse( ((max_forecast_value > median_val)
+                             &
+                                 (max_forecast_value > (median_val + sd))
+                             &
+                                 (max_forecast_value > (median_val + iqr))
+                             &
+                                 (max_forecast_value >= (current_val * 1.15))
+                             &
+                                 ((Date - Sys.Date()) >= 5))
+                             |
+                                ((max_forecast_value) >= outer_lim)
+                             &
+                                ((max_forecast_value - current_val) > 1.5), 
+                    "A",
+                    ifelse( ((max_forecast_value > median_val)
+                             &
+                                   (max_forecast_value > (median_val + sd))
+                                 #&
+                                 #(max_forecast_value > (median_val + iqr))
+                             &
+                                 (max_forecast_value >= (current_val * 1.15))
+                             &
+                                 ((Date - Sys.Date()) >= 5))
+                             |
+                                ((max_forecast_value) >= outer_lim)
+                             &
+                                ((max_forecast_value - current_val) > .5), 
+                    "B",
+                    ifelse( ((max_forecast_value > median_val)
+                             #&
+                             #   (max_forecast_value > (median_val + sd))
+                             &
+                                 (max_forecast_value > (median_val + iqr))
+                             &
+                                 (max_forecast_value >= (current_val * 1.10))
+                             &
+                                 ((Date - Sys.Date()) >= 5))
+                             |
+                                ((max_forecast_value) >= outer_lim)
+                             &
+                                ((max_forecast_value - current_val) > .5), 
+                    "C",
+                    ifelse( ((max_forecast_value > median_val)
+                             #&
+                             #    (max_forecast_value > (median_val + sd))
+                             #&
+                             #    (max_forecast_value > (median_val + iqr))
+                             &
+                                 (max_forecast_value >= (current_val * 1.05))
+                             &
+                                 ((Date - Sys.Date()) >= 3))
+                             |
+                                ((max_forecast_value) >= outer_lim)
+                             &
+                                ((max_forecast_value - current_val) > .5), 
+                    "D",
+                    ifelse( ((max_forecast_value > median_val)
+                             #&
+                             #    (max_forecast_value > (median_val + sd))
+                             #&
+                             #    (max_forecast_value > (median_val + iqr))
+                             &
+                                 (max_forecast_value >= (current_val))
+                             &
+                                 ((Date - Sys.Date()) >= 3))
+                             |
+                                ((max_forecast_value) >= outer_lim)
+                             &
+                                ((max_forecast_value - current_val) > .5), 
+                   "E",
+                   ifelse( ((max_forecast_value <= current_val)
+                             |
+                            (max_forecast_value <= median_val)),
+                            #&
+                            #    (max_forecast_value > (median_val + sd))
+                            #&
+                            #    (max_forecast_value > (median_val + iqr))
+                            #&
+                            #    (max_forecast_value >= (current_val))
+                            #&
+                            #    ((Date - Sys.Date()) >= 3))
+                            #|
+                            #   ((max_forecast_value) >= outer_lim)
+                            #&
+                            #       ((max_forecast_value - current_val) > .5), 
+                    "F","Ignore"
+           ) # S Tier if - else completion
+           ) # A Tier if - else completion
+           ) # B Tier if - else completion
+           ) # C Tier if - else completion
+           ) # D Tier if - else completion
+           ) # E Tier if - else completion
+           ) # F Tier if - else completion
+           )  %>% 
+    drop_na() %>% 
+    arrange(Classification)
+
+#grand_slam_tbl %>% view()
+
+#grand_slam_tbl %>% group_by(Key) %>% summarize(median_val = max(median_val), outer_lim = max(outer_lim), Date = max(Date))
+slimmed_sf_tbl = grand_slam_tbl %>% select(Key,current_val,iqr,sd,max_forecast_value,plus_minus,Classification) %>% distinct() %>% 
+    left_join(grand_slam_tbl %>% group_by(Key) %>% summarize(median_val = max(median_val), outer_lim = max(outer_lim), Date = max(Date)),
+              by = c("Key"="Key")) %>%
+    select(Key,current_val,iqr,sd,median_val,outer_lim, max_forecast_value, plus_minus, Date, Classification) %>%
+    mutate(iqr = round(iqr,1),
+           sd = round(sd,1),
+           max_forecast_value = round(max_forecast_value,1),
+           plus_minus = round(plus_minus,2)) 
+
+removal = slimmed_sf_tbl %>% group_by(Key) %>% tally() %>% arrange(desc(n)) %>% filter(n > 1)
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
+slimmed_sf_tbl = slimmed_sf_tbl %>% filter( Key %!in% removal$Key )
+
+
+options(httr_oob_default=TRUE) 
+options(gargle_oauth_email = "pachun95@gmail.com")
+drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+
+tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+    #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
+    rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
+    mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+        rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
+        #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
+        mutate(Semi = paste(name, Set,sep=""))})
+
+Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>%mutate(name = gsub("\\s\\/\\/.*","",name),
+                                                                                        Key = trimws(paste(name,Set,Rarity," ",Foil,sep="")),
+                                                                                        Semi = paste(name,Set,sep="")) 
+
+
+
+export_slim_sf_tbl = slimmed_sf_tbl %>% left_join(Updated_Tracking_Keys %>% select(Key, name, Set, Rarity), by =c("Key"="Key")) %>%
+    select(Key, name, Set, Rarity, everything()) %>% mutate(Safety = ifelse(sd > iqr, "Volatile","Not Volatile")) %>%
+    #select(-iqr,-sd) %>% 
+    distinct() #%>% filter(Classification == "S")
+
+
+export_slim_sf_tbl %>% head()
+
+```
+
