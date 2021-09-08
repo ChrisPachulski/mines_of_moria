@@ -7,6 +7,50 @@ library(plyr)
 library(jsonlite)
 library(readr)
 library(lubridate)
+
+right = function(text, num_char) {
+  substr(text, nchar(text) - (num_char-1), nchar(text))
+} #Recreating the right function from Excel 
+left = function(text, num_char) {
+  substr(text, 1, num_char)
+} #Recreating the left function from Excel 
+funk <- function(t){
+  ifelse(nchar(t) <= 10, right(t,1),ifelse(nchar(t)<=190, right(t,2),ifelse(nchar(t)>=191, right((t),3),0)))
+} #Character Count utilization of 'left'&'right' functions for quantity breakdown
+moveme <- function (invec, movecommand) {
+  movecommand <- lapply(strsplit(strsplit(movecommand, ";")[[1]], 
+                                 ",|\\s+"), function(x) x[x != ""])
+  movelist <- lapply(movecommand, function(x) {
+    Where <- x[which(x %in% c("before", "after", "first", 
+                              "last")):length(x)]
+    ToMove <- setdiff(x, Where)
+    list(ToMove, Where)
+  })
+  myVec <- invec
+  for (i in seq_along(movelist)) {
+    temp <- setdiff(myVec, movelist[[i]][[1]])
+    A <- movelist[[i]][[2]][1]
+    if (A %in% c("before", "after")) {
+      ba <- movelist[[i]][[2]][2]
+      if (A == "before") {
+        after <- match(ba, temp) - 1
+      }
+      else if (A == "after") {
+        after <- match(ba, temp)
+      }
+    }
+    else if (A == "first") {
+      after <- 0
+    }
+    else if (A == "last") {
+      after <- length(myVec)
+    }
+    myVec <- append(temp, values = movelist[[i]][[1]], after = after)
+  }
+  myVec
+}
+
+
 currentDate <- Sys.Date()
 Sets <- read.csv("/home/cujo253/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
 Exclusion <- data.frame(Sets$Set_Excl,Sets$Excl_Excl)
@@ -69,7 +113,7 @@ Page_Contents <- htmlTreeParse(TCG_URL_1, useInternalNode=TRUE)
 
 Xpath_contents <- xpathSApply(Page_Contents,"//li", xmlValue)
 Xpath_contents <- as.data.frame(Xpath_contents)
-CardSphere_Secrets <-data.frame(do.call('rbind', strsplit(as.character(Xpath_contents$Xpath_contents),'  ',fixed=TRUE))) #Delimiting off "\n" or newline escape sequences
+CardSphere_Secrets <- suppressWarnings(data.frame(do.call('rbind', strsplit(as.character(Xpath_contents$Xpath_contents),'  ',fixed=TRUE)))) #Delimiting off "\n" or newline escape sequences
 CardSphere_Secrets <- CardSphere_Secrets$X29
 CardSphere_Secrets <- data.frame(do.call('rbind', strsplit(as.character(Xpath_contents$Xpath_contents),'\n',fixed=TRUE))) #Delimiting off "\n" or newline escape sequences
 CardSphere_Secrets <- CardSphere_Secrets$X3
@@ -88,7 +132,7 @@ Xpath_contents <- as.data.frame(Xpath_contents)
 Total_Rows <- nrow(Xpath_contents)
 TBR_Rows <- nrow(Xpath_contents)-15
 CardSphere_Set_Numbers <- Xpath_contents[-c(TBR_Rows:Total_Rows),]
-Cardsphere_Outer_Shell <- data.frame(CardSphere_Printed_Sets,CardSphere_Set_Numbers)
+Cardsphere_Outer_Shell <- data.frame(CardSphere_Printed_Sets,CardSphere_Set_Numbers) %>% filter(CardSphere_Set_Numbers != "#")
 
 
 All_CardSphere <- NULL
@@ -143,7 +187,7 @@ for (set in Cardsphere_Outer_Shell$CardSphere_Set_Numbers) {
 }
 
 CardSphere_Final_Output <- All_CardSphere
-CardSphere_Final_Output$retail_.80 <- round(CardSphere_Final_Output$retail*.80,1)
+CardSphere_Final_Output$retail_.80 <- round(CardSphere_Final_Output$retail*.74,1)
 CK_Equivalent <- Slim_CK_Buylist
 CK_Equivalent$meta.created_at <- paste(CK_Equivalent$data.name,CK_Equivalent$data.edition,CK_Equivalent$data.is_foil,sep="")
 CardSphere_Final_Output$CK_BL_Offer <- CK_Equivalent$data.price_buy[match(CardSphere_Final_Output$Key,CK_Equivalent$meta.created_at)]
@@ -252,8 +296,12 @@ Cardsphere_Retrieval <- as.data.frame(Cardsphere_Retrieval)
 CS <- Cardsphere_Retrieval
 
 Cardsphere_Retrieval$isfoil[is.na(Cardsphere_Retrieval$isfoil) == T] <- ""
-Cardsphere_Retrieval <- Cardsphere_Retrieval[which(Cardsphere_Retrieval$Opportunities >= 1.50),]
-Cardsphere_Retrieval <- Cardsphere_Retrieval[which(Cardsphere_Retrieval$CK_BL_Offer >= .25),]
+Cardsphere_Retrieval$Perc_Marg <- (round(Cardsphere_Retrieval$Opportunities / as.numeric(Cardsphere_Retrieval$CK_BL_Offer),2))
+Cardsphere_Retrieval$Perc_Opp <- (round(Cardsphere_Retrieval$Opportunities / as.numeric(Cardsphere_Retrieval$retail_.80),2))
+Cardsphere_Retrieval <- Cardsphere_Retrieval[which( (Cardsphere_Retrieval$Opportunities >= 5.00 | Cardsphere_Retrieval$Perc_Opp >= .25) & Cardsphere_Retrieval$Perc_Marg >= .20),]
+Cardsphere_Retrieval <- Cardsphere_Retrieval[which(Cardsphere_Retrieval$CK_BL_Offer >= 1.00),]
+
+#View(Cardsphere_Retrieval)
 
 Target_List <- append(Cardsphere_Retrieval$Key,Wolfs_Targets$Semi_Key)
 Target_List <- as.data.frame(Target_List)
@@ -315,10 +363,11 @@ sheet_write(
   ss = ss,
   sheet = "CS_Import_List"
 )
+CS_Import_List <- CS_Import_List[!grepl("Urza's",CS_Import_List),]
 library(RSelenium)
-remDr = remoteDriver(remoteServerAddr = "159.65.219.70", port = 4445L, browser = "chrome")
+remDr = remoteDriver(remoteServerAddr = "159.65.219.70", port = 4445, browser = "chrome")
 remDr$open()
-
+remDr$maxWindowSize()
 remDr$navigate("https://www.cardsphere.com/login")
 Sys.sleep(5)
 
@@ -347,37 +396,37 @@ New_Wants <-remDr$findElement(using = "xpath", value = '//*[@id="wants"]/ul/li[1
 New_Wants$clickElement()
 
 
-for(i in 1:30){
+for(i in 1:26){
   Offer_Perc <- remDr$findElement("xpath", '//*[@id="wants"]/div[1]/form/div[6]/div/div[1]')
   Offer_Perc$clickElement()
   Sys.sleep(.25)
 }
 
-
+#i = 4
 for(i in 1:nrow(CS_Import_List)){
+  tryCatch(expr = {
   Card_Search <-remDr$findElement(using = "xpath", value = '//*[@id="wants"]/div[1]/form/div[1]/div/input')
   Card_Search$clickElement()
+  Sys.sleep(.3)
   Card_Search$sendKeysToElement(list(CS_Import_List$Name[i]))
   Sys.sleep(3)
   Card_Search <- remDr$findElement("xpath", '//*[@id="wants"]/div[1]/form/div[1]/div/div[2]/ul/li[1]')
   Sys.sleep(1)
   Card_Search$clickElement()
   Card_Search$clickElement()
-  
-  Sys.sleep(1)
-  Set_Search <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div')
+
+  Set_Search <-remDr$findElement(using = "xpath", value = '//*[@id="wants"]/div[1]/form/div[2]/div/a/span[1]')
   Set_Search$clickElement()
-  Set_Search$clickElement()
-  # Set_Search <-remDr$findElement(using = "xpath", value = '//*[@id="wants"]/div[1]/form/div[2]/div/a/span[1]')
-  # Set_Search$clickElement()
   Sys.sleep(1)
+  remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/a/span[1]')$clickElement()
   Set_Selection <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/div[1]/div[2]/input')
+  Set_Selection$clickElement()
   Set_Selection$sendKeysToElement(list(CS_Import_List$Edition[i]))
   Sys.sleep(1)
   Set_Select <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/div[1]/ul/li/a')
   Set_Select$clickElement()
   Set_Select$click(buttonId = 2)
-  if(Set_Search$getElementText() == "Select sets\n "){
+  if(unlist(Set_Search$getElementText()) == "Select sets"){
     Sys.sleep(1)
     Set_Search <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div')
     Set_Search$clickElement()
@@ -391,25 +440,93 @@ for(i in 1:nrow(CS_Import_List)){
     Set_Select <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/div[1]/ul/li/a')
     Set_Select$clickElement()
     Set_Select$click(buttonId = 2)
+    Sys.sleep(2)
   }
   
-  
-  
-  Sys.sleep(2)
-  Finish_Selection <- remDr$findElement("xpath", '//*[@id="wants"]/div[1]/form/div[4]/div/a/span[1]')
-  Finish_Selection$clickElement()
-  Finish_Selection$sendKeysToElement(list("Nonfoil"))
+  if(remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[4]/div/a/span[1]')$getElementText() %>% unlist() == "Select finish"){
+    foil_box = remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[4]/div/a/span')
+    foil_box$clickElement()
+    foil_box = remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[4]/div/div[1]/div[2]/input')
+    foil_box$sendKeysToElement(list("Nonfoil",key="enter"))
+    foil_box = remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[4]/div/a/span')
+    foil_box$clickElement()
+  }
   
   Sys.sleep(1)
-  for(i in 1:11){
-    Quantity_Selection <- remDr$findElement("xpath", '//*[@id="wants"]/div[1]/form/div[9]/div/div[2]')
-    Quantity_Selection$clickElement()
-    Sys.sleep(.20)
-  }
+  Quantity_Selection <- remDr$findElement("xpath", '//*[@id="wants"]/div[1]/form/div[9]/div/input')
+  Sys.sleep(.20)
+  Quantity_Selection$sendKeysToElement(list("2"))
+  
   Sys.sleep(1)
   Submition <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[12]/button')
+  Sys.sleep(2)
   Submition$clickElement()
-  Sys.sleep(3)
+  Sys.sleep(.25)
+  }, error = function(e){ 
+    remDr$refresh()
+    for(i in 1:26){
+      Offer_Perc <- remDr$findElement("xpath", '//*[@id="wants"]/div[1]/form/div[6]/div/div[1]')
+      Offer_Perc$clickElement()
+      Sys.sleep(.25)
+    }
+    Card_Search <-remDr$findElement(using = "xpath", value = '//*[@id="wants"]/div[1]/form/div[1]/div/input')
+    Card_Search$clickElement()
+    Sys.sleep(.3)
+    Card_Search$sendKeysToElement(list(CS_Import_List$Name[i]))
+    Sys.sleep(3)
+    Card_Search <- remDr$findElement("xpath", '//*[@id="wants"]/div[1]/form/div[1]/div/div[2]/ul/li[1]')
+    Sys.sleep(1)
+    Card_Search$clickElement()
+    Card_Search$clickElement()
+    
+    Set_Search <-remDr$findElement(using = "xpath", value = '//*[@id="wants"]/div[1]/form/div[2]/div/a/span[1]')
+    Set_Search$clickElement()
+    Sys.sleep(1)
+    remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/a/span[1]')$clickElement()
+    Set_Selection <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/div[1]/div[2]/input')
+    Set_Selection$clickElement()
+    Set_Selection$sendKeysToElement(list(CS_Import_List$Edition[i]))
+    Sys.sleep(1)
+    Set_Select <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/div[1]/ul/li/a')
+    Set_Select$clickElement()
+    Set_Select$click(buttonId = 2)
+    if(unlist(Set_Search$getElementText()) == "Select sets"){
+      Sys.sleep(1)
+      Set_Search <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div')
+      Set_Search$clickElement()
+      
+      # Set_Search <-remDr$findElement(using = "xpath", value = '//*[@id="wants"]/div[1]/form/div[2]/div/a/span[1]')
+      # Set_Search$clickElement()
+      Sys.sleep(1)
+      Set_Selection <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/div[1]/div[2]/input')
+      Set_Selection$sendKeysToElement(list(CS_Import_List$Edition[i]))
+      Sys.sleep(1)
+      Set_Select <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[2]/div/div[1]/ul/li/a')
+      Set_Select$clickElement()
+      Set_Select$click(buttonId = 2)
+      Sys.sleep(2)
+    }
+    
+    if(remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[4]/div/a/span[1]')$getElementText() %>% unlist() == "Select finish"){
+      foil_box = remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[4]/div/a/span')
+      foil_box$clickElement()
+      foil_box = remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[4]/div/div[1]/div[2]/input')
+      foil_box$sendKeysToElement(list("Nonfoil",key="enter"))
+      foil_box = remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[4]/div/a/span')
+      foil_box$clickElement()
+    }
+    
+    Sys.sleep(1)
+    Quantity_Selection <- remDr$findElement("xpath", '//*[@id="wants"]/div[1]/form/div[9]/div/input')
+    Sys.sleep(.20)
+    Quantity_Selection$sendKeysToElement(list("2"))
+    
+    Sys.sleep(1)
+    Submition <- remDr$findElement("xpath",'//*[@id="wants"]/div[1]/form/div[12]/button')
+    Sys.sleep(2)
+    Submition$clickElement()
+    Sys.sleep(.25)
+    })
 }
 
 

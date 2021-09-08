@@ -1,5 +1,18 @@
-setwd("/home/cujo253/Reports/Tokyo")
-pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery,RSelenium)
+#install.packages(c("rvest","tidyverse","RSelenium","googledrive"))
+d#evtools::install_github("tidyverse/googlesheets4", INSTALL_opts= '--no-lock',force = TRUE)
+library(tidyverse)
+library(rvest)
+library(RSelenium)
+right = function(text, num_char) {
+  substr(text, nchar(text) - (num_char-1), nchar(text))
+} #Recreating the right function from Excel 
+left = function(text, num_char) {
+  substr(text, 1, num_char)
+} #Recreating the left function from Excel 
+funk <- function(t){
+  ifelse(nchar(t) <= 10, right(t,1),ifelse(nchar(t)<=190, right(t,2),ifelse(nchar(t)>=191, right((t),3),0)))
+}
+
 moveme <- function (invec, movecommand) {
   movecommand <- lapply(strsplit(strsplit(movecommand, ";")[[1]], 
                                  ",|\\s+"), function(x) x[x != ""])
@@ -34,8 +47,9 @@ moveme <- function (invec, movecommand) {
 }
 
 #Japanese Palantir####
-remDr = remoteDriver(remoteServerAddr = "159.65.219.70", port = 4445L, browser = "chrome")
+remDr = remoteDriver(remoteServerAddr = "167.99.63.23", port = 4445L, browser = "chrome")
 remDr$open()
+remDr$maxWindowSize()
 remDr$navigate("https://tokyomtg.com/")
 English <- remDr$findElement(using = "class", value = "fa-refresh")
 English$clickElement()
@@ -52,68 +66,65 @@ Sys.sleep(1)
 Select_Foils <- remDr$findElement("xpath",'//*[@id="store"]/div/form/div[3]/div/div[1]/div')$clickElement()
 Remove_Foils <- remDr$findElement("xpath", '//*[@id="premium-checkboxes"]/div[1]/label/span')$clickElement()
 Sys.sleep(1)
+Remove_Commons <- remDr$findElement("xpath",'//*[@id="rarity-checkboxes"]/div[4]/label/span')$clickElement()
+Sys.sleep(1)
 Select_Foils <- remDr$findElement("xpath",'//*[@id="store"]/div/form/div[3]/div/div[1]/div')$clickElement()
 
 Refresh <- remDr$findElement("class", "filter-button")$clickElement()
-Table_of_Contents <- data.frame("Pages" = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20), "Page_Address" = c(20,40,60,80,100,120,140,160,180,200,220,240,260,280,300,320,340,360,380,400))
+Table_of_Contents <- data.frame("Pages" = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50), 
+                                "Page_Address" = c(20,40,60,80,100,120,140,160,180,200,220,240,260,280,300,320,340,360,380,400,420,440,460,480,500,520,540,560,580,600,620,640,660,680,700,720,740,760,780,800,820,840,860,880,900,920,940,960,980,1000))
 
 Tokyos_Contents <- NULL
-i = 10
+
 #Data Acquisition####
-for (i in 8:330){
+for (i in 1:291){
 Desired_URL <- paste("https://tokyomtg.com/cardpage.html?p=s&s=",i,sep="")
 remDr$navigate(Desired_URL)
 Skip = "No"
-Skip = tryCatch(expr = {remDr$findElement("xpath","/html/body/div[2]/div/section/table/tbody/tr/td[2]")$getElementText()}, error = function(e){Skip = "Yes"})
-#No_Options = tryCatch(expr = {unlist(remDr$getPageSource()[[1]]%>% read_html() %>% html_nodes("h3") %>% html_text())}, error = function(e){No_Options = "Passes"})
-#if(No_Options == "All of the cards are hidden by your filter settings."){Skip = "Yes"}else{Skip = Skip}  
+Skip = tryCatch(expr = {remDr$findElement("xpath",'/html/body/div[2]/div/section/table/tbody/tr/td[2]')$getElementText()}, error = function(e){Skip = "Yes"})
+No_Options = tryCatch(expr = {unlist(remDr$findElement("xpath","/html/body/div[1]/div/section/h3")$getElementText())}, error = function(e){No_Options = "Passes"})
+if(No_Options == "All of the cards are hidden by your filter settings."){Skip = "Yes"}else{Skip = Skip}  
   if(Skip == "Yes"){} else {
-    Pages_In_Set <- trimws(unlist(remDr$findElement("xpath","/html/body/div[2]/div/section/table/tbody/tr/td[2]")$getElementText()))
-    Pages_In_Set <- data.frame(do.call('rbind',strsplit(as.character(Pages_In_Set), ' of ', fixed=T)))
-    Pages_In_Set <- as.numeric(as.character(Pages_In_Set$X2))
-    if(Pages_In_Set%%1 == 0){
-    Pages_To_Scrape <- round(Pages_In_Set/20,0)
+    Pages_In_Set <- tryCatch(expr = {as.numeric(right(trimws(unlist(remDr$findElement("class","store-pagination")$getElementText())),1))}, error = function(e){Pages_In_Set = NA})
+    Pages_In_Set <- tryCatch(expr = {as.numeric(right(trimws(unlist(remDr$findElement("class","store-pagination")$getElementText())),2))}, error = function(e){Pages_In_Set = Pages_In_Set})
+    if(is.na(Pages_In_Set) == T){
+    Pages_To_Scrape <- 1
     Unique_Contents <- Table_of_Contents[which(Table_of_Contents$Pages <= Pages_To_Scrape),]
     }else{
-      Pages_To_Scrape <- round(Pages_In_Set/20,0)+1
+      Pages_To_Scrape <- Pages_In_Set
       Unique_Contents <- Table_of_Contents[which(Table_of_Contents$Pages <= Pages_To_Scrape),]
     }
   if(length(Unique_Contents$Pages) == 0 ){ Unique_Contents = data.frame(1,20) } else {Unique_Contents$Pages == Unique_Contents$Pages}
   colnames(Unique_Contents) <- c("Pages","Page_Address")
-  pages <- max(Unique_Contents$Pages)
-  if((Pages_In_Set == 20)|(Pages_In_Set == 40)|(Pages_In_Set == 60)|(Pages_In_Set == 80)|(Pages_In_Set == 100)|(Pages_In_Set == 120)|(Pages_In_Set == 140 |(Pages_In_Set == 160) |(Pages_In_Set == 180) |(Pages_In_Set == 200) |(Pages_In_Set == 240) |(Pages_In_Set == 260))){pages = pages - 1}
-      for(j in 1:(pages)){
-      needed_specifier <- paste("https://tokyomtg.com/cardpage.html?p=s&s=",i,"&b=",(Unique_Contents$Page_Address[j]),sep="")
+      for(j in 1:(max(Unique_Contents$Pages))){
+      needed_specifier <- paste("https://tokyomtg.com/cardpage.html?p=s&s=",i,"&b=",(Unique_Contents$Page_Address[j-1]),sep="")
+      if((is.na(as.numeric(right(needed_specifier,1))) != T) & right(needed_specifier,1) != "A"){
       remDr$navigate(needed_specifier)
+      Sys.sleep(.25)
       Kyoko_Fukada <- remDr$getPageSource()[[1]]%>% read_html()
         
       Kyoko_Fukada_First_Secret <-  Kyoko_Fukada %>% html_nodes("h3") %>% html_text()
       Kyoko_Fukada_First_Secret <- as.data.frame(Kyoko_Fukada_First_Secret)
       Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret <- as.character(Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret)
-      Kyoko_Fukada_Names <- if(identical(Kyoko_Fukada_First_Secret[-grep("Out of stock", Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret),],character(0))){Kyoko_Fukada_Names <- Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret}else{Kyoko_Fukada_First_Secret[-grep("Out of stock", Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret),]}
-      Kyoko_Fukada_Names <- data.frame(do.call('rbind', strsplit(as.character(Kyoko_Fukada_Names),'\\(English\\)',fixed=TRUE)))
-      colnames(Kyoko_Fukada_Names) = "V1"
-      Kyoko_Fukada_Second_Secret <- as.data.frame(Kyoko_Fukada_Names[!grepl("English",Kyoko_Fukada_Names$V1),])
-      colnames(Kyoko_Fukada_Second_Secret) = "V1"
-      #Kyoko_Fukada_Second_Secret <- as.data.frame(Kyoko_Fukada_Second_Secret[!grepl("Booster",Kyoko_Fukada_Second_Secret$V1),])
-      colnames(Kyoko_Fukada_Second_Secret) = "V1"
-      Kyoko_Fukada_Second_Secret <- Kyoko_Fukada_Second_Secret[!grepl("address",Kyoko_Fukada_Second_Secret$V1),]
+      if (nrow(as.data.frame(Kyoko_Fukada_First_Secret[-grep("Out of stock", Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret),])) == 0){Kyoko_Fukada_Names <- Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret}else{Kyoko_Fukada_Names <- Kyoko_Fukada_First_Secret[-grep("Out of stock", Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret),]}
+      Kyoko_Fukada_Cards <- as.data.frame(gsub(" \\(English\\)","", Kyoko_Fukada_Names))
+      Kyoko_Fukada_Names <- Kyoko_Fukada_Cards[c(1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39),]
+      Kyoko_Fukada_Names <- na.omit(Kyoko_Fukada_Names)
+        
+      Kyoko_Fukada_Second_Secret <- Kyoko_Fukada_Cards[c(2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40),]
+      Kyoko_Fukada_Second_Secret <- Kyoko_Fukada_Second_Secret[!grepl("SUBTOTAL",Kyoko_Fukada_Second_Secret)]
       Kyoko_Fukada_Second_Secret <- data.frame(do.call('rbind', strsplit(as.character(Kyoko_Fukada_Second_Secret),' - ',fixed=TRUE)))
-      Kyoko_Fukada_Second_Secret <- as.data.frame(Kyoko_Fukada_Second_Secret[!grepl(".*\\(.*\\(",Kyoko_Fukada_Second_Secret$X1),])
-      Kyoko_Fukada_Second_Secret <- as.data.frame(Kyoko_Fukada_Second_Secret[!grepl(".*\\(.*\\(",Kyoko_Fukada_Second_Secret$X2),])
-      colnames(Kyoko_Fukada_Second_Secret) <- c("Edition","Rarity") 
-      Kyoko_Fukada_Names <- as.data.frame(Kyoko_Fukada_Names[grepl("\\(",Kyoko_Fukada_Names$V1),])
-      colnames(Kyoko_Fukada_Names) = "Card"
-      Kyoko_Fukada_Names <- data.frame(Card = gsub(" \\(English\\)","",Kyoko_Fukada_Names$Card))
-      
-      
-      #Kyoko_Fukada_Third_Secret <-Kyoko_Fukada %>% html_nodes("h6") %>% html_text()
-      Kyoko_Fukada_Third_Secret <-Kyoko_Fukada %>% html_nodes(".tab-pane.fade.show.active") %>% html_text()
-      
+      colnames(Kyoko_Fukada_Second_Secret) <- c("Edition","Rarity")
+      Kyoko_Fukada_Second_Secret <- na.omit(Kyoko_Fukada_Second_Secret)
+        
+      Kyoko_Fukada_Third_Secret <- Kyoko_Fukada %>% html_nodes(".tab-content") %>% html_text()
+      Kyoko_Fukada_Third_Secret <- gsub("\\n","",Kyoko_Fukada_Third_Secret)
+      Kyoko_Fukada_Third_Secret <- gsub("\\$","",Kyoko_Fukada_Third_Secret)
+      Kyoko_Fukada_Third_Secret <- gsub("add to cart","",Kyoko_Fukada_Third_Secret)
+      Kyoko_Fukada_Third_Secret <- gsub("Out of stock","",Kyoko_Fukada_Third_Secret)
+      Kyoko_Fukada_Third_Secret <- gsub("QTY\\:\\d+.*","",Kyoko_Fukada_Third_Secret)
+      Kyoko_Fukada_Third_Secret <- gsub("\\)","",Kyoko_Fukada_Third_Secret)
       Kyoko_Fukada_Third_Secret <- data.frame(do.call('rbind',strsplit(as.character(Kyoko_Fukada_Third_Secret), ' (Stock: ', fixed=T)))
-      Kyoko_Fukada_Third_Secret$X2 <- as.numeric(gsub("\\).*","",Kyoko_Fukada_Third_Secret$X2))
-      Kyoko_Fukada_Third_Secret$X1 <- as.numeric(trimws(gsub("\\,","",gsub("\\$","",Kyoko_Fukada_Third_Secret$X1))))
-      
       colnames(Kyoko_Fukada_Third_Secret) <- c("Retail","Stock")
       
       Kyoko_Fukada_Unifies <- data.frame(Kyoko_Fukada_Names,Kyoko_Fukada_Second_Secret$Edition, Kyoko_Fukada_Second_Secret$Rarity,Kyoko_Fukada_Third_Secret$Retail, Kyoko_Fukada_Third_Secret$Stock)
@@ -121,16 +132,131 @@ Skip = tryCatch(expr = {remDr$findElement("xpath","/html/body/div[2]/div/section
       Tokyos_Contents <- rbind(Tokyos_Contents, Kyoko_Fukada_Unifies)
       Tokyos_Contents <- unique(Tokyos_Contents)
       }
+    }
   } 
 }
-
+for (i in 293){
+  Desired_URL <- paste("https://tokyomtg.com/cardpage.html?p=s&s=",i,sep="")
+  remDr$navigate(Desired_URL)
+  Skip = "No"
+  Skip = tryCatch(expr = {remDr$findElement("xpath",'/html/body/div[2]/div/section/table/tbody/tr/td[2]')$getElementText()}, error = function(e){Skip = "Yes"})
+  No_Options = tryCatch(expr = {unlist(remDr$findElement("xpath","/html/body/div[1]/div/section/h3")$getElementText())}, error = function(e){No_Options = "Passes"})
+  if(No_Options == "All of the cards are hidden by your filter settings."){Skip = "Yes"}else{Skip = Skip}  
+  if(Skip == "Yes"){} else {
+    Pages_In_Set <- tryCatch(expr = {as.numeric(right(trimws(unlist(remDr$findElement("class","store-pagination")$getElementText())),1))}, error = function(e){Pages_In_Set = NA})
+    Pages_In_Set <- tryCatch(expr = {as.numeric(right(trimws(unlist(remDr$findElement("class","store-pagination")$getElementText())),2))}, error = function(e){Pages_In_Set = Pages_In_Set})
+    if(is.na(Pages_In_Set) == T){
+      Pages_To_Scrape <- 1
+      Unique_Contents <- Table_of_Contents[which(Table_of_Contents$Pages <= Pages_To_Scrape),]
+    }else{
+      Pages_To_Scrape <- Pages_In_Set
+      Unique_Contents <- Table_of_Contents[which(Table_of_Contents$Pages <= Pages_To_Scrape),]
+    }
+    if(length(Unique_Contents$Pages) == 0 ){ Unique_Contents = data.frame(1,20) } else {Unique_Contents$Pages == Unique_Contents$Pages}
+    colnames(Unique_Contents) <- c("Pages","Page_Address")
+    for(j in 1:(max(Unique_Contents$Pages))){
+      needed_specifier <- paste("https://tokyomtg.com/cardpage.html?p=s&s=",i,"&b=",(Unique_Contents$Page_Address[j-1]),sep="")
+      if((is.na(as.numeric(right(needed_specifier,1))) != T) & right(needed_specifier,1) != "A"){
+        remDr$navigate(needed_specifier)
+        Sys.sleep(.25)
+        Kyoko_Fukada <- remDr$getPageSource()[[1]]%>% read_html()
+        
+        Kyoko_Fukada_First_Secret <-  Kyoko_Fukada %>% html_nodes("h3") %>% html_text()
+        Kyoko_Fukada_First_Secret <- as.data.frame(Kyoko_Fukada_First_Secret)
+        Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret <- as.character(Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret)
+        if (nrow(as.data.frame(Kyoko_Fukada_First_Secret[-grep("Out of stock", Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret),])) == 0){Kyoko_Fukada_Names <- Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret}else{Kyoko_Fukada_Names <- Kyoko_Fukada_First_Secret[-grep("Out of stock", Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret),]}
+        Kyoko_Fukada_Cards <- as.data.frame(gsub(" \\(English\\)","", Kyoko_Fukada_Names))
+        Kyoko_Fukada_Names <- Kyoko_Fukada_Cards[c(1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39),]
+        Kyoko_Fukada_Names <- na.omit(Kyoko_Fukada_Names)
+        
+        Kyoko_Fukada_Second_Secret <- Kyoko_Fukada_Cards[c(2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40),]
+        Kyoko_Fukada_Second_Secret <- Kyoko_Fukada_Second_Secret[!grepl("SUBTOTAL",Kyoko_Fukada_Second_Secret)]
+        Kyoko_Fukada_Second_Secret <- data.frame(do.call('rbind', strsplit(as.character(Kyoko_Fukada_Second_Secret),' - ',fixed=TRUE)))
+        colnames(Kyoko_Fukada_Second_Secret) <- c("Edition","Rarity")
+        Kyoko_Fukada_Second_Secret <- na.omit(Kyoko_Fukada_Second_Secret)
+        
+        Kyoko_Fukada_Third_Secret <- Kyoko_Fukada %>% html_nodes(".tab-content") %>% html_text()
+        Kyoko_Fukada_Third_Secret <- gsub("\\n","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("\\$","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("add to cart","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("Out of stock","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("QTY\\:\\d+.*","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("\\)","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- data.frame(do.call('rbind',strsplit(as.character(Kyoko_Fukada_Third_Secret), ' (Stock: ', fixed=T)))
+        colnames(Kyoko_Fukada_Third_Secret) <- c("Retail","Stock")
+        
+        Kyoko_Fukada_Unifies <- data.frame(Kyoko_Fukada_Names,Kyoko_Fukada_Second_Secret$Edition, Kyoko_Fukada_Second_Secret$Rarity,Kyoko_Fukada_Third_Secret$Retail, Kyoko_Fukada_Third_Secret$Stock)
+        colnames(Kyoko_Fukada_Unifies) <- c("Card","Edition","Rarity","Retail","Stock")
+        Tokyos_Contents <- rbind(Tokyos_Contents, Kyoko_Fukada_Unifies)
+        Tokyos_Contents <- unique(Tokyos_Contents)
+      }
+    }
+  } 
+}
+for (i in 304:311){
+  Desired_URL <- paste("https://tokyomtg.com/cardpage.html?p=s&s=",i,sep="")
+  remDr$navigate(Desired_URL)
+  Skip = "No"
+  Skip = tryCatch(expr = {remDr$findElement("xpath",'/html/body/div[2]/div/section/table/tbody/tr/td[2]')$getElementText()}, error = function(e){Skip = "Yes"})
+  No_Options = tryCatch(expr = {unlist(remDr$findElement("xpath","/html/body/div[1]/div/section/h3")$getElementText())}, error = function(e){No_Options = "Passes"})
+  if(No_Options == "All of the cards are hidden by your filter settings."){Skip = "Yes"}else{Skip = Skip}  
+  if(Skip == "Yes"){} else {
+    Pages_In_Set <- tryCatch(expr = {as.numeric(right(trimws(unlist(remDr$findElement("class","store-pagination")$getElementText())),1))}, error = function(e){Pages_In_Set = NA})
+    Pages_In_Set <- tryCatch(expr = {as.numeric(right(trimws(unlist(remDr$findElement("class","store-pagination")$getElementText())),2))}, error = function(e){Pages_In_Set = Pages_In_Set})
+    if(is.na(Pages_In_Set) == T){
+      Pages_To_Scrape <- 1
+      Unique_Contents <- Table_of_Contents[which(Table_of_Contents$Pages <= Pages_To_Scrape),]
+    }else{
+      Pages_To_Scrape <- Pages_In_Set
+      Unique_Contents <- Table_of_Contents[which(Table_of_Contents$Pages <= Pages_To_Scrape),]
+    }
+    if(length(Unique_Contents$Pages) == 0 ){ Unique_Contents = data.frame(1,20) } else {Unique_Contents$Pages == Unique_Contents$Pages}
+    colnames(Unique_Contents) <- c("Pages","Page_Address")
+    for(j in 1:(max(Unique_Contents$Pages))){
+      needed_specifier <- paste("https://tokyomtg.com/cardpage.html?p=s&s=",i,"&b=",(Unique_Contents$Page_Address[j-1]),sep="")
+      if((is.na(as.numeric(right(needed_specifier,1))) != T) & right(needed_specifier,1) != "A"){
+        remDr$navigate(needed_specifier)
+        Sys.sleep(.25)
+        Kyoko_Fukada <- remDr$getPageSource()[[1]]%>% read_html()
+        
+        Kyoko_Fukada_First_Secret <-  Kyoko_Fukada %>% html_nodes("h3") %>% html_text()
+        Kyoko_Fukada_First_Secret <- as.data.frame(Kyoko_Fukada_First_Secret)
+        Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret <- as.character(Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret)
+        if (nrow(as.data.frame(Kyoko_Fukada_First_Secret[-grep("Out of stock", Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret),])) == 0){Kyoko_Fukada_Names <- Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret}else{Kyoko_Fukada_Names <- Kyoko_Fukada_First_Secret[-grep("Out of stock", Kyoko_Fukada_First_Secret$Kyoko_Fukada_First_Secret),]}
+        Kyoko_Fukada_Cards <- as.data.frame(gsub(" \\(English\\)","", Kyoko_Fukada_Names))
+        Kyoko_Fukada_Names <- Kyoko_Fukada_Cards[c(1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39),]
+        Kyoko_Fukada_Names <- na.omit(Kyoko_Fukada_Names)
+        
+        Kyoko_Fukada_Second_Secret <- Kyoko_Fukada_Cards[c(2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40),]
+        Kyoko_Fukada_Second_Secret <- Kyoko_Fukada_Second_Secret[!grepl("SUBTOTAL",Kyoko_Fukada_Second_Secret)]
+        Kyoko_Fukada_Second_Secret <- data.frame(do.call('rbind', strsplit(as.character(Kyoko_Fukada_Second_Secret),' - ',fixed=TRUE)))
+        colnames(Kyoko_Fukada_Second_Secret) <- c("Edition","Rarity")
+        Kyoko_Fukada_Second_Secret <- na.omit(Kyoko_Fukada_Second_Secret)
+        
+        Kyoko_Fukada_Third_Secret <- Kyoko_Fukada %>% html_nodes(".tab-content") %>% html_text()
+        Kyoko_Fukada_Third_Secret <- gsub("\\n","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("\\$","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("add to cart","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("Out of stock","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("QTY\\:\\d+.*","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- gsub("\\)","",Kyoko_Fukada_Third_Secret)
+        Kyoko_Fukada_Third_Secret <- data.frame(do.call('rbind',strsplit(as.character(Kyoko_Fukada_Third_Secret), ' (Stock: ', fixed=T)))
+        colnames(Kyoko_Fukada_Third_Secret) <- c("Retail","Stock")
+        
+        Kyoko_Fukada_Unifies <- data.frame(Kyoko_Fukada_Names,Kyoko_Fukada_Second_Secret$Edition, Kyoko_Fukada_Second_Secret$Rarity,Kyoko_Fukada_Third_Secret$Retail, Kyoko_Fukada_Third_Secret$Stock)
+        colnames(Kyoko_Fukada_Unifies) <- c("Card","Edition","Rarity","Retail","Stock")
+        Tokyos_Contents <- rbind(Tokyos_Contents, Kyoko_Fukada_Unifies)
+        Tokyos_Contents <- unique(Tokyos_Contents)
+      }
+    }
+  } 
+}
 Tokyos_Safety <- Tokyos_Contents
 #Tokyos_Contents <- Tokyos_Safety
 #View(Tokyos_Contents)
-Tokyos_Contents$Rarity <- ifelse(Tokyos_Contents$Rarity == "Mythic Rare","M", ifelse(Tokyos_Contents$Rarity == "Rare", "R", ifelse(Tokyos_Contents$Rarity == "Uncommon", "U", ifelse(Tokyos_Contents$Rarity == "Common", "C", Tokyos_Contents$Rarity))))
+Tokyos_Contents$Rarity <- ifelse(Tokyos_Contents$Rarity == "Mythic","M", ifelse(Tokyos_Contents$Rarity == "Rare", "R", ifelse(Tokyos_Contents$Rarity == "Uncommon", "U", ifelse(Tokyos_Contents$Rarity == "Common", "C", Tokyos_Contents$Rarity))))
 Tokyos_Contents$Key <- paste(Tokyos_Contents$Card,Tokyos_Contents$Edition,Tokyos_Contents$Rarity, sep ="")
 Tokyos_Contents <- Tokyos_Contents[moveme(names(Tokyos_Contents), "Key first")]
-
 
 setwd("/home/cujo253/Reports/Tokyo")
 currentDate <- Sys.Date()
@@ -138,43 +264,41 @@ csvFileName <- paste(currentDate,"_Tokyo",".csv",sep="")
 write.csv(Tokyos_Contents, file=csvFileName, row.names = FALSE)
 
 #USA Comparison####
-invisible(gaeas_cradle <- function(email){
-  con <- dbConnect(
-    bigrquery::bigquery(),
-    project = "gaeas-cradle",
-    dataset = "premiums",
-    billing = "gaeas-cradle"
-  )
-  bq_auth(email = email, use_oob = TRUE)
-  options(scipen = 20)
-  con
-})
-currentDate <- Sys.Date()
-con <- gaeas_cradle("wolfoftinstreet@gmail.com")
+TodaysPremium <- paste("/home/cujo253/Reports/High Confidence Reps/",currentDate,"_Premium.csv", sep="")
 
-statement <- paste(
-  "SELECT rtrim(Key) as Key, Card, a.Set, Rarity,Foil_Status, BL_QTY, BL, MKT, Arb, Sellers, TCG_Rank, CK_ADJ_Rank   ",
-  "FROM `gaeas-cradle.premiums.",gsub("-","_",currentDate),"_TCG_CK_Data` a ",
-  sep = ""
-)
-USA_Data <- dbSendQuery(con, statement = statement) %>% dbFetch(n = -1) %>% filter(Foil_Status != "FOIL") %>% select(-Foil_Status) %>% as.data.frame()
+USA_Data <- read_csv(TodaysPremium,col_types = cols(.default = "c"))
 
-Tokyos_Contents$Edition <- gsub("Ikoria Commander","Ikoria: Lair of Behemoths",Tokyos_Contents$Edition)
 Tokyos_Contents$USA_Retail <- as.numeric(USA_Data$MKT)[match(Tokyos_Contents$Key,USA_Data$Key)]
-
-length(unique(Tokyos_Contents$Edition))
-#Tokyos_Contents <- na.omit(Tokyos_Contents)
+Tokyos_Contents <- na.omit(Tokyos_Contents)
 Tokyos_Contents$Arbit <- round(as.numeric(as.character(Tokyos_Contents$Retail)) - Tokyos_Contents$USA_Retail ,2)
 Tokyos_Contents_Mkt <- Tokyos_Contents[order(Tokyos_Contents$Arbit),]
 
 
 Tokyos_Contents$USA_BL <- as.numeric(USA_Data$BL)[match(Tokyos_Contents$Key,USA_Data$Key)]
-#Tokyos_Contents <- na.omit(Tokyos_Contents)
+Tokyos_Contents <- na.omit(Tokyos_Contents)
 Tokyos_Contents$Arbit_BL <- round(as.numeric(as.character(Tokyos_Contents$Retail)) - Tokyos_Contents$USA_BL ,2)
 Tokyos_Contents_BL <- Tokyos_Contents[order(Tokyos_Contents$Arbit_BL),]
+Tokyos_Contents_BL$Stock <- as.numeric(as.character(left(Tokyos_Contents_BL$Stock,1)))
+#View(Tokyos_Contents_BL)
 
-drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
-gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
-sheet_write(Tokyos_Contents_BL,ss = drive_get("Tokyo"),sheet = "MTGTOKYO")
+library(devtools)
+#devtools::install_github("tidyverse/googlesheets4")
+library(googlesheets4)
+library(googledrive)
+drive_auth(email = "pachun95@gmail.com", use_oob=TRUE)
+gs4_auth(email = "pachun95@gmail.com", use_oob=TRUE)
 
+ss <- drive_get("Japans MTG Market")
+#sheets_deauth()
+
+# sheet_write(
+#   Tokyos_Contents_Mkt,
+#   ss = ss,
+#   sheet = "Market_Comparison"
+# )
+sheet_write(
+  Tokyos_Contents_BL,
+  ss = ss,
+  sheet = "Market_vs_Buylist_Comparison"
+)
 
