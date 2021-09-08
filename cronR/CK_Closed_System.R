@@ -79,10 +79,10 @@ invisible(gaeas_cradle <- function(email){
   options(scipen = 20)
   con
 })
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})
@@ -91,7 +91,7 @@ Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>
                                                                                         Key = trimws(paste(name,Set,Rarity," ",Foil,sep="")),
                                                                                         Semi = paste(name,Set,sep="")) 
 
-Sets <- read.csv("/home/cujo253/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
 
 ck_conversion <- read_csv("~/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
 
@@ -108,7 +108,7 @@ BL_Ratio$BL_Ratio_Ranking <- as.numeric(as.character(BL_Ratio$BL_Ratio_Ranking))
 BL_Ratio$BL_Ratio_Value <- as.numeric(as.character(BL_Ratio$BL_Ratio_Value))
 QTY_Ratio$QTY_Ratio_Ranking <- as.numeric(as.character(QTY_Ratio$QTY_Ratio_Ranking))
 QTY_Ratio$QTY_Ratio_Value <- as.numeric(as.character(QTY_Ratio$QTY_Ratio_Value))
-All_Cards <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv",col_types = cols(Foil = col_character()))
+All_Cards <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv",col_types = cols(Foil = col_character()))
 Printings <- All_Cards %>% group_by(card) %>% add_tally()
 
 currentDate <- Sys.Date()
@@ -208,7 +208,7 @@ CK_Sales_Data$CK_Rank <- Absolute_CK_CK_Sales_Data
 summary(CK_Sales_Data)
 End_Time <- Sys.time()
 End_Time - Start_Time
-#Import_Name <- paste("/home/cujo253/Funny Money/",currentDate,"_CK_Credit_Data.csv",sep="")
+#Import_Name <- paste("/home/cujo253/mines_of_moria/Funny Money/",currentDate,"_CK_Credit_Data.csv",sep="")
 #CK_Full_Data <- read.csv(Import_Name)
 CK_Sales_Data$semi_Key <- paste(CK_Sales_Data$CK_name,CK_Sales_Data$CK_set,sep="")
 Dollar_Slim_CK_Buylist$Sell_Rank <- CK_Sales_Data$CK_Rank[match(Dollar_Slim_CK_Buylist$semi_key,CK_Sales_Data$semi_Key)]
@@ -290,10 +290,10 @@ drive_auth(email = "pachun95@gmail.com", use_oob=TRUE)
 gs4_auth(email = "pachun95@gmail.com", use_oob=TRUE)
 #View(Wolfs_Targets)
 
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})
@@ -331,7 +331,7 @@ sheet_write(
   sheet = "Current_BuyList"
 )
 
-setwd("/home/cujo253/Metrics/Daily_Velocity_Trackers")
+setwd("/home/cujo253/mines_of_moria/Metrics/Daily_Velocity_Trackers")
 csvFileName <- paste(currentDate,"_Velocity",".csv",sep="")
 write.csv(Dollar_Slim_CK_Buylist, file=csvFileName, row.names = FALSE)
 

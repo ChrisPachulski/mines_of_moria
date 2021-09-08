@@ -47,13 +47,13 @@ options(gargle_oauth_email = "pachun95@gmail.com")
 #
 drive_auth(email = "pachun95@gmail.com", use_oob=TRUE)
 gs4_auth(email = "pachun95@gmail.com", use_oob=TRUE)
-Sets <- read.csv("/home/cujo253/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+Sets <- read.csv("/home/cujo253//mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
 
 ck_conversion <- read_csv("~/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253//mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253//mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})
@@ -63,12 +63,12 @@ Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>
                                                                                         Semi = paste(name,Set,sep="")) 
 
 # Cardsphere Purchasing Ledger --------------------------------------------
-refund_keys = read_csv("/home/cujo253/Essential_Referential_CSVS/cs_ledger.csv") %>% 
+refund_keys = read_csv("/home/cujo253//mines_of_moria/Essential_Referential_CSVS/cs_ledger.csv") %>% 
   filter(Operation  == "Refund") %>% 
   mutate(refund_operation = paste(`Trade #`,`Card Name`)) %>% select(refund_operation)
 
 
-cs_ledger = read_csv("/home/cujo253/Essential_Referential_CSVS/cs_ledger.csv") %>% filter(Operation == "Purchase") %>%
+cs_ledger = read_csv("/home/cujo253//mines_of_moria/Essential_Referential_CSVS/cs_ledger.csv") %>% filter(Operation == "Purchase") %>%
   mutate(refund_operation = paste(`Trade #`,`Card Name`)) %>%
   filter(.$refund_operation %!in% refund_keys$refund_operation) %>%
   mutate(Qty = 1, Finish = ifelse(Finish == "Nonfoil","","FOIL"), `Net Amount` = (`Net Amount` * -1) )
@@ -125,7 +125,7 @@ CS_Ledger_Cleaned = cs_ledger %>% filter(Cost > 0) %>%
 Updated_Tracking_Keys %>% select(Set) %>% distinct() %>% filter(grepl("Judge",Set)) %>% view()
 Sets %>% select(CK_BL_Scrape_Sets) %>% filter(grepl("Ultimate",CK_BL_Scrape_Sets))
 
-cs_sales = read_csv("/home/cujo253/Essential_Referential_CSVS/cs_ledger.csv")                                    %>%
+cs_sales = read_csv("/home/cujo253//mines_of_moria/Essential_Referential_CSVS/cs_ledger.csv")                                    %>%
   mutate(`Platform Sold` = "CS",Finish = ifelse(Finish == "Nonfoil","","FOIL"), `Net Amount` = (`Net Amount` * -1) )%>% 
   filter(Operation  == "Sale")                                                                        %>% 
   select(Date,`Card Name`,`Set Name`,Finish,`Net Amount`,`Peer User`,`Platform Sold`,`Trade #`)                   %>%
@@ -912,7 +912,7 @@ ck_tcg_sales_tbl = rbind(
 
 Combined_Ledger %>% colnames()
 # Purchases ---------------------------------------------------------------
-custom_sales = readxl::read_xlsx("/home/cujo253/Essential_Referential_CSVS/Ledger_Needed.xlsx",sheet = "Sales") %>%
+custom_sales = readxl::read_xlsx("/home/cujo253//mines_of_moria/Essential_Referential_CSVS/Ledger_Needed.xlsx",sheet = "Sales") %>%
   select(-param) %>%
   mutate(hasFoil = ifelse(is.na(hasFoil),"",hasFoil),
          sell_id = `Platform Sold`,
@@ -922,7 +922,7 @@ custom_sales = readxl::read_xlsx("/home/cujo253/Essential_Referential_CSVS/Ledge
   summarize(param = min(param)) %>% ungroup() %>%
   select(param,everything())
 
-custom_buys = readxl::read_xlsx("/home/cujo253/Essential_Referential_CSVS/Ledger_Needed.xlsx",sheet = "Purchases") %>%
+custom_buys = readxl::read_xlsx("/home/cujo253//mines_of_moria/Essential_Referential_CSVS/Ledger_Needed.xlsx",sheet = "Purchases") %>%
   mutate(hasFoil = ifelse(is.na(hasFoil),"",hasFoil),
          Date = format(Date,"%Y-%m-%d")) %>%
   left_join(Updated_Tracking_Keys %>% select(param,Key),by=c("Key"="Key")) %>%

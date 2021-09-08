@@ -278,7 +278,7 @@ Entire_Dictionary$Working_Key <- paste(Entire_Dictionary$card,Entire_Dictionary$
 Shortened_Dictionary <- Entire_Dictionary[c(1,2,3,4,5,8,10,24,6,7,9,13,11,12,22,23)]
 Shortened_Dictionary$Key <- paste(Shortened_Dictionary$card,Shortened_Dictionary$set,Shortened_Dictionary$rarity,Shortened_Dictionary$hasFoil,sep="")
 
-setwd("/home/cujo253/Essential_Referential_CSVS/")
+setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/")
 csvFileName <- paste("C20_Addition",".csv",sep="")
 write.csv(Shortened_Dictionary, file=csvFileName, row.names = FALSE)
 
@@ -291,14 +291,14 @@ print("BQ Premium Upload Successful!")
 #CK Buylist####
 #Call full buylist via "Raw_CK_Buylist" data frame
 #Call functional (/slimmed) buylist via "CK_Buylist_Retrieved" data frame
-Sets <- read.csv("/home/cujo253/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
 #View(Sets)
 ck_conversion <- read_csv("~/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
 
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})
@@ -1332,7 +1332,7 @@ mybq <- bq_table(project = "gaeas-cradle", dataset = "tcgplayer", table = paste(
 bq_table_upload(x=mybq, values = tcgplayer_bq_export, fields=as_bq_fields(tcgplayer_bq_export),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
 print("BQ TCG Upload Successful!")
 
-#setwd("/home/cujo253/Reports/Low Confidence Reps")
+#setwd("/home/cujo253/mines_of_moria/Reports/Low Confidence Reps")
 #Basic_Market_Review <- Basic_Market_Review[c(1,2,3,4,5,8,7,6)]
 #names(Basic_Market_Review)<- c("Key","Card","Set","Rarity","F/NF","BL_QTY","BL","MKT")
 #csvFileName <- paste(currentDate,"_Basic",".csv",sep="")
@@ -1875,7 +1875,7 @@ bq_table_upload(x=mybq, values = KPI_Export, fields=as_bq_fields(KPI_Export),nsk
 print("BQ_KPI_TRANSFER_COMPLETE!!")
 
 #CK vs TCG Dollar Differences####
-setwd("/home/cujo253/Funny Money/")
+setwd("/home/cujo253/mines_of_moria/Funny Money/")
 currentDate <- Sys.Date()
 con <- gaeas_cradle("wolfoftinstreet@gmail.com")
 

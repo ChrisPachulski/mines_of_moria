@@ -1,5 +1,5 @@
 pacman::p_load(tidyverse,lubridate,anytime,hms)
-server_data = read_csv("/home/cujo253/ban_logs/logs/BAN Arbitrage Network - Admin - 🚨server-dump [769323295526748160].csv")
+server_data = read_csv("/home/cujo253/mines_of_moria/ban_logs/logs/BAN Arbitrage Network - Admin - 🚨server-dump [769323295526748160].csv")
 
 
 server_data %>% mutate_if(is.character,as.factor) %>% summary()
