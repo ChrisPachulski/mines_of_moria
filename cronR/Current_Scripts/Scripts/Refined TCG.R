@@ -1,0 +1,1 @@
+url = ("https://shop.tcgplayer.com/magic/product/show?Condition=LightlyPlayed&Condition=NearMint&MinQuantity=4&Print=Normal&Language=English&PageNumber=",i)
