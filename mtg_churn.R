@@ -347,7 +347,7 @@ tcg_data_grab = function(input = q){
   # Get a list of tcgIds from whatever source you have
   # I adjust to greater than $5 because I act on this information and I'd like to get it in a timely manner, 
   # entirely arbitrary filter
-  tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >=10) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
+  tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >=3) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
   
   # Some sets don't have any cards greater than $5, continue loop if so
   if(nrow(tcg_ids_of_interest)==0){print(paste("No Cards in",stacked_text$editions[q],"Moving On!"))}
@@ -637,8 +637,8 @@ for(q in 1:length(stacked_text$editions)){
   suppressMessages(gc())
   all_set_sales = tryCatch({
                     tryCatch({tcg_data_grab(q)}, 
-                         error = function(e){retry(expr = tcg_data_grab(q), maxErrors = 1, sleep=2)}
-                    )},error=function(e){print("All Attempts Exhausted")
+                         error = function(e){suppressMessages(retry(expr = tcg_data_grab(q), maxErrors = 1, sleep=2))}
+                    )},error=function(e){NULL
                   })
   all_data = rbind(all_data,all_set_sales)
   Sys.sleep(sample(.29:1.63, 1))
