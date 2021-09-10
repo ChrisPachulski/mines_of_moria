@@ -183,7 +183,7 @@ Entire_Dictionary$Working_Key <- paste(Entire_Dictionary$card,Entire_Dictionary$
 Shortened_Dictionary <- Entire_Dictionary[c(1,2,3,4,5,8,10,24,6,7,9,13,11,12,22,23)]
 Shortened_Dictionary$Key <- paste(Shortened_Dictionary$card,Shortened_Dictionary$set,Shortened_Dictionary$rarity,Shortened_Dictionary$hasFoil,sep="")
 
-setwd("/home/cujo253/mines_of_moria/")
+setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/")
 csvFileName <- paste("C20_Addition",".csv",sep="")
 write.csv(Shortened_Dictionary, file=csvFileName, row.names = FALSE)
 
@@ -632,11 +632,11 @@ for(q in 1:length(stacked_text$editions)){
 #for(q in 5:5){
   # Test for loop when debugging
   #for(q in 3:3){
-  tryCatch({
-      tryCatch({all_set_sales = tcg_data_grab(q)}, 
-               error = function(e){all_set_sales = retry(expr = tcg_data_grab(q), maxErrors = 1, sleep=2)}
-      )},error=function(e){print("All Attempts Exhausted")
-    })
+  all_set_sales = tryCatch({
+                    tryCatch({tcg_data_grab(q)}, 
+                         error = function(e){retry(expr = tcg_data_grab(q), maxErrors = 1, sleep=2)}
+                    )},error=function(e){print("All Attempts Exhausted")
+                  })
   all_data = rbind(all_data,all_set_sales)
 }
 
