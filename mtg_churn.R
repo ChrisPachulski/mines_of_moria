@@ -628,16 +628,22 @@ tcg_data_grab = function(input = q){
   return(all_set_sales)
 }
 
+total = length(stacked_text$editions) 
+pb <- txtProgressBar(min=0, max = total, style = 3)
+Q <- 1
+
 for(q in 1:length(stacked_text$editions)){
-#for(q in 5:5){
-  # Test for loop when debugging
-  #for(q in 3:3){
+
+  suppressMessages(gc())
   all_set_sales = tryCatch({
                     tryCatch({tcg_data_grab(q)}, 
                          error = function(e){retry(expr = tcg_data_grab(q), maxErrors = 1, sleep=2)}
                     )},error=function(e){print("All Attempts Exhausted")
                   })
   all_data = rbind(all_data,all_set_sales)
+  Sys.sleep(sample(.29:1.63, 1))
+  setTxtProgressBar(pb,Q)
+  Q <- Q+1
 }
 
 #retry(tcg_data_grab(5),maxErrors = 3, sleep = 2)
