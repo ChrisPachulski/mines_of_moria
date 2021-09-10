@@ -1,0 +1,1 @@
+dotnet DiscordChatExporter.Cli.dll exportguild -t NDQyMDg5MzA3ODg5NDY3NDEy.YIjrcA.AQccpdQxlTrpsoB6vOg6XRFJpVY -g 637563728711385091 -o "/home/cujo253/mines_of_moria/ban_logs/logs" -f Csv
