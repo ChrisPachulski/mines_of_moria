@@ -864,18 +864,39 @@ all_tcg_card_info = function(ip){
 }
 ck_best_sellers = function(){
   
+  gc()
   Limit <- data.frame(raw_elements = read_html("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=1") %>% html_nodes("a") %>% html_attr("href")) %>%  filter(grepl("page=",raw_elements)) %>%as.data.frame() %>% dplyr::slice(4:20) %>% lapply(as.character) %>% as.data.frame() %>% mutate(pages = parse_number(str_sub(raw_elements,-5,-1))) %>% mutate(pages = as.numeric(pages)) %>% as.data.frame() %>% select(pages) %>% max()    
-
+  #cl <- makeCluster(2, type = "FORK")
+  
+  #registerDoParallel(cl)
+  Sys.sleep(3)
+  Start_Time <- Sys.time()
   CK_Prices_df <- NULL
   for(i in 1:Limit){
-    CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
-    Card <- content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text()
-    Set <- gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) 
-    Rarity <- gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))
-    Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
-    key <- paste(Card, Set, Rarity,sep="")
-    Results <- data.frame(key,Card,Set,Rarity,Price,i)
-    CK_Prices_df <- rbind(CK_Prices_df,Results)
+    tryCatch({
+      tryCatch({
+        CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
+        Card <- content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text()
+        Set <- gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) 
+        Rarity <- gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))
+        Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
+        key <- paste(Card, Set, Rarity,sep="")
+        Results <- data.frame(key,Card,Set,Rarity,Price,i)
+        CK_Prices_df <- rbind(CK_Prices_df,Results)
+        Sys.sleep(.9)}, error = function(e){
+          Sys.sleep(120)
+          CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
+          Card <- content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text()
+          Set <- gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) 
+          Rarity <- gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))
+          Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
+          key <- paste(Card, Set, Rarity,sep="")
+          Results <- data.frame(key,Card,Set,Rarity,Price,i)
+          CK_Prices_df <- rbind(CK_Prices_df,Results)
+          Sys.sleep(.9)
+        })}, error = function(e){
+          next}
+    )
   }
   
   CK_Smaller_List <- fromJSON("https://api.cardkingdom.com/api/pricelist")                                                       %>% 
