@@ -486,11 +486,13 @@ Foils = Foils %>% mutate(composition = (round(count/F_Total_Offers,4)))
 
 # Jenny Craig Buy List ----------------------------------------------------
 
-Slim_CK_Buylist = CK_Buylist                                %>% 
+Slim_CK_Buylist = CK_Buylist                                %>%
+  mutate(data.number = gsub(".*-","",data.sku)) %>%
   select(meta.created_at     ,
          data.name           ,
          data.edition        ,
          data.is_foil        ,
+         data.number         ,
          data.price_retail   ,
          data.qty_retail     ,
          data.price_buy      ,
@@ -584,7 +586,6 @@ Eternal_Growers %>%
   arrange(desc(ratio))
 
 # Card Sphere Acquisition -------------------------------------------------
-
 CardSphere_Printed_Sets = "https://www.cardsphere.com/sets" %>% 
   getURL()                                                %>% 
   htmlTreeParse(.,useInternalNode=TRUE)                   %>%
@@ -699,7 +700,7 @@ for (set in Cardsphere_Outer_Shell$CardSphere_Set_Numbers) {
 
 CardSphere_Final_Output <- All_CardSphere
 
-
+#CardSphere_Final_Output %>% filter(grepl("Modern Horizons 2 Ex",edition))
 
 # Card Sphere Conditioning Raw Output -------------------------------------
 
@@ -1005,7 +1006,8 @@ my_offer = personal_review %>% mutate(ecom_ratio = round(ck_buy/ecom_retail,2)) 
          Set = gsub("Magic 2013","2013 Core Set",Set),
          Set = gsub("Magic 2014","2014 Core Set",Set),
          Set = gsub("Magic 2015","2015 Core Set",Set),
-         Set = gsub("Theros Beyond Death","Theros: Beyond Death",Set)) %>%
+         Set = gsub("Core","Core Set",Set),
+         Set = gsub("Theros:","Theros",Set)) %>%
   filter( round((ck_buy - ecom_retail)/ck_buy,2 ) <= .05 ) %>%
   filter(round(exp_offer/ecom_retail,2) >= .4) %>%
   left_join(all_combined %>% select(param,cs_price),by=c("param"="param")) %>%
@@ -1023,34 +1025,110 @@ try({
 con                = gaeas_cradle("wolfoftinstreet@gmail.com")
 
 statement = paste('
-  With t1 as (
-SELECT DISTINCT Product_ID
-  FROM `gaeas-cradle.mtg_churn.',gsub("-","_",Sys.Date()-1),'_mtg_churn` c
-  LEFT JOIN (SELECT  PARSE_DATE("%Y-%m-%d",  rdate) as rdate, a.set FROM `gaeas-cradle.roster.mtgjson` a) b on b.set = c.set
-  WHERE earliest_dop >= (current_date() - 13) and latest_dop >= (current_date() - 1) and price >= 5 and sales_per_day >= 5
-),
-t2 as (
-  SELECT *
-  FROM `gaeas-cradle.mtg_churn.*`
-  WHERE _TABLE_SUFFIX BETWEEN
-  FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) AND
-  FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL -1 DAY)) AND 
-  Methodology like "SR"
-)
-SELECT *
+  SELECT
+  *,
+  CASE
+    WHEN offer_ratio <= .60 THEN ROUND(offer * 1.05,2)
+  ELSE
+  ROUND(offer * .8,2)
+END
+  exp_offer
 FROM (
-SELECT t1.Product_ID,t2.Card_name,t2.Set,t2.Rarity,t2.isFoil,t2.number,round(AVG(t2.price),2) as MKT, round(AVG(t2.sales_per_day),2) sales_per_day
-FROM t1
-LEFT JOIN t2 on t2.Product_ID = t1.Product_ID
-GROUP BY 1,2,3,4,5,6
-ORDER BY Card_name,isFoil) b 
-WHERE Card_name is not null and sales_per_day >= 5 and MKT >= 35
-ORDER BY sales_per_day desc
+  SELECT
+    *,
+    ROUND(offer/avg_sell_price,2) offer_ratio
+  FROM (
+    SELECT
+      DISTINCT productId,
+      card,
+      b.set,
+      rarity,
+      version,
+      number,
+      offer,
+      MIN(all_quantity) all_quantity,
+      MAX(max_single_qty) max_single_qty,
+      SUM(sold_quantity) sold_quantity,
+      SUM(orders) orders,
+      ROUND(AVG(orders),2) AS avg_daily_orders,
+      ROUND(AVG(score_to_beat),2) score_to_beat,
+      ROUND(AVG(avg_sell_price),2) avg_sell_price,
+      MAX(max_order_size) max_order_size
+    FROM
+      `gaeas-cradle.mtg_churn.*` a
+    LEFT JOIN (
+      SELECT
+        CAST(tcg_ID AS INTEGER) tcg_ID,
+        card,
+        c.
+      SET
+        ,
+        c.rarity,
+        CASE
+          WHEN c.hasFoil LIKE "" THEN 0
+        ELSE
+        1
+      END
+        AS hasFoil,
+        number,
+        CAST(rdate AS Date) rdate
+      FROM
+        `gaeas-cradle.roster.mtgjson` c ) b
+    ON
+      a.productId = b. tcg_ID
+      AND a.version = b.hasFoil
+    LEFT JOIN (
+      SELECT
+        DISTINCT CAST(c.tcg_ID AS INTEGER) tcg_ID,
+        a.offer
+      FROM
+        `gaeas-cradle.ban_buylist.*` a
+      LEFT JOIN
+        `gaeas-cradle.roster.ban_buylist_id` b
+      ON
+        b.id = a.vendor
+      LEFT JOIN
+        `gaeas-cradle.roster.mtgjson_ban` c
+      ON
+        c.uuid = a.uuid
+      WHERE
+        _TABLE_SUFFIX BETWEEN FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+        AND FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 0 DAY))
+        AND b.vendor LIKE "CK"
+        AND c.card IS NOT NULL
+        AND a.hasFoil = 0 ) bl
+    ON
+      bl.tcg_ID = a.productId
+    WHERE
+      _TABLE_SUFFIX BETWEEN FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
+      AND FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL -1 DAY))
+      AND avg_sell_price > 0
+      AND (condition LIKE "NM")
+      AND all_quantity > 0
+    GROUP BY
+      productId,
+      card,
+      b.set,
+      rarity,
+      number,
+      version,
+      offer ) ovr_table
+  WHERE
+    avg_daily_orders >= 5
+    #AND avg_sell_price >= 5
+    AND max_order_size <= 10
+    AND (score_to_beat - avg_sell_price < avg_sell_price
+      AND avg_sell_price - score_to_beat < score_to_beat)
+    AND offer IS NOT NULL) offer_tbl
+ORDER BY
+  avg_daily_orders DESC
 ',sep="")
 
-bs_values <- dbSendQuery(con, statement = statement) %>% dbFetch(., n = -1) %>% distinct()
+bs_values <- dbSendQuery(con, statement = statement) %>% dbFetch(., n = -1) %>% distinct() %>% filter(version == 0)
 
-bs_extended_tbl = bs_values %>% mutate(Semi = paste(Card_name,Set,sep="")) %>% left_join(CardSphere_Final_Output %>% filter(isfoil == "") %>%
+
+
+bs_extended_tbl = bs_values %>% mutate(Semi = paste(card,set,sep="")) %>% left_join(CardSphere_Final_Output %>% filter(isfoil == "") %>%
                                                                              mutate(edition = gsub("Secret Lair Drop","Secret Lair Drop Series",edition),
                                                                                     edition = gsub("Tenth","10th",edition),
                                                                                     edition = gsub("Ninth","9th",edition),
@@ -1071,31 +1149,40 @@ bs_extended_tbl = bs_values %>% mutate(Semi = paste(Card_name,Set,sep="")) %>% l
                                                                                     edition = gsub("Magic 2013","2013 Core edition",edition),
                                                                                     edition = gsub("Magic 2014","2014 Core edition",edition),
                                                                                     edition = gsub("Magic 2015","2015 Core edition",edition),
+                                                                                    edition = gsub("Core","Core Set",edition),
+                                                                                    edition = gsub("Theros:","Theros",edition),
+                                                                                    edition = gsub("^Modern Masters 2013","Modern Masters",edition),
                                                                                     Semi = paste(name,edition,sep="")) %>% select(Semi,price) %>% rename(cs_price = price), 
                                                                            by = c("Semi"="Semi")) %>% distinct() %>%
-  left_join(Slim_CK_Buylist %>% 
-              select(meta.created_at,data.price_retail,data.qty_retail,data.price_buy,data.qty_buying,QTY_Diff,Price_Diff,Tier) %>%
+  left_join(Slim_CK_Buylist %>%  mutate(data.is_foil = ifelse(data.is_foil == "",0,1), 
+                                        meta.created_at = paste(data.name,data.edition,sep="")) %>%
+              select(meta.created_at,data.is_foil,data.number,data.price_retail,data.qty_retail,data.price_buy,data.qty_buying,QTY_Diff,Price_Diff,Tier) %>%
               mutate(Tier = round(Tier,0)),
-            by = c("Semi"="meta.created_at")) %>% 
+            by = c("Semi"="meta.created_at","version"="data.is_foil","number"="data.number")) %>% 
   rename(ck_retail = data.price_retail,ck_qty = data.qty_retail,ck_buy = data.price_buy,ck_buy_qty = data.qty_buying) %>%
-  mutate(exp_offer = ck_buy + 1,
-         diff = value - exp_offer) %>%
-  filter(diff >= 5) %>% distinct() %>%
-  filter(isFoil == "") %>%
-  #lazy addendum
-  mutate(exp_offer = round(cs_price * .67,2) )
-
+  mutate(diff = value - exp_offer) %>%
+  filter(diff >= 5) %>% distinct() %>% 
+  mutate(my_ratio = round(exp_offer / cs_price,2),
+         ck_ratio = round(ck_buy/ck_retail,2)) %>%
+  select(card,set,avg_daily_orders,max_order_size,avg_sell_price,cs_price,ck_retail,ck_buy,exp_offer,offer_ratio,my_ratio,ck_ratio) %>%
+  rename(tcg_ratio = offer_ratio) %>%
+  mutate(post_fee_value = round(avg_sell_price * .80,2),
+         desired_buy_price = round(post_fee_value * .70,2),
+         desired_buy_price = ifelse(ck_buy > desired_buy_price, desired_buy_price,round(ck_buy*1.1,2) ),
+         pay_off = post_fee_value - desired_buy_price) %>%
+  filter(desired_buy_price >= ck_buy,
+         pay_off >= 1) %>% distinct()
 
 
 bs_additions_tbl = data.frame(Quantity        = 12                  ,
                               Tradelist_Count = 0                   ,
-                              Name            = bs_extended_tbl$Card_name,
-                              Edition         = bs_extended_tbl$Set,
+                              Name            = bs_extended_tbl$card,
+                              Edition         = bs_extended_tbl$set,
                               Condition       = "Near Mint"         ,
                               Language        = "English"           ,
                               Finish          = ""                  ,
                               Tags            = ""                  ,
-                              min_value       = bs_extended_tbl$exp_offer) %>% distinct()
+                              min_value       = bs_extended_tbl$desired_buy_price) %>% distinct()
 
 })
 #CardSphere_Final_Output
