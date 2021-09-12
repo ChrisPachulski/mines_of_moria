@@ -12,7 +12,7 @@ league_tbl = data.frame(style = "league", format = c("vintage","pauper","standar
 formats_tbl = rbind(league_tbl,preliminary_tbl)
 
 
-retrieve_decklists = function(formats_tbl,days = 14){
+retrieve_decklists = function(formats_tbl,days = 30){
     all_decklists = NULL
     for(d in 1:days){
         desired_date = (Sys.Date() + 1) - d
