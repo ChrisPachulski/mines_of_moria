@@ -1160,8 +1160,7 @@ bs_extended_tbl = bs_values %>% mutate(Semi = paste(card,set,sep="")) %>% left_j
               mutate(Tier = round(Tier,0)),
             by = c("Semi"="meta.created_at","version"="data.is_foil","number"="data.number")) %>% 
   rename(ck_retail = data.price_retail,ck_qty = data.qty_retail,ck_buy = data.price_buy,ck_buy_qty = data.qty_buying) %>%
-  mutate(diff = value - exp_offer) %>%
-  filter(diff >= 5) %>% distinct() %>% 
+  distinct() %>% 
   mutate(my_ratio = round(exp_offer / cs_price,2),
          ck_ratio = round(ck_buy/ck_retail,2)) %>%
   select(card,set,avg_daily_orders,max_order_size,avg_sell_price,cs_price,ck_retail,ck_buy,exp_offer,offer_ratio,my_ratio,ck_ratio) %>%
@@ -1174,6 +1173,58 @@ bs_extended_tbl = bs_values %>% mutate(Semi = paste(card,set,sep="")) %>% left_j
          pay_off >= 1) %>% distinct()
 
 
+bs2 = bs_values %>% mutate(Semi = paste(card,set,sep="")) %>% left_join(CardSphere_Final_Output %>% filter(isfoil == "") %>%
+                                                                    mutate(edition = gsub("Secret Lair Drop","Secret Lair Drop Series",edition),
+                                                                           edition = gsub("Tenth","10th",edition),
+                                                                           edition = gsub("Ninth","9th",edition),
+                                                                           edition = gsub("Eighth","8th",edition),
+                                                                           edition = gsub("Seventh","7th",edition),
+                                                                           edition = gsub("Sixth","6th",edition),
+                                                                           edition = gsub("Fifth","5th",edition),
+                                                                           edition = gsub("Fourth","4th",edition),
+                                                                           edition = gsub("Three","3rd",edition),
+                                                                           edition = gsub(" edition "," ",edition),
+                                                                           edition = gsub(" Anthology:",":",edition),
+                                                                           edition = gsub("5th Dawn","Fifth Dawn",edition),
+                                                                           edition = gsub("the Coalition","The Coalition",edition),
+                                                                           edition = gsub("Commander 2011","Commander",edition),
+                                                                           edition = gsub("Magic 2010","2010 Core edition",edition),
+                                                                           edition = gsub("Magic 2011","2011 Core edition",edition),
+                                                                           edition = gsub("Magic 2012","2012 Core edition",edition),
+                                                                           edition = gsub("Magic 2013","2013 Core edition",edition),
+                                                                           edition = gsub("Magic 2014","2014 Core edition",edition),
+                                                                           edition = gsub("Magic 2015","2015 Core edition",edition),
+                                                                           edition = gsub("Core","Core Set",edition),
+                                                                           edition = gsub("Theros:","Theros",edition),
+                                                                           edition = gsub("^Modern Masters 2013","Modern Masters",edition),
+                                                                           Semi = paste(name,edition,sep="")) %>% select(Semi,price) %>% rename(cs_price = price), 
+                                                                  by = c("Semi"="Semi")) %>% distinct() %>%
+  left_join(Slim_CK_Buylist %>%  mutate(data.is_foil = ifelse(data.is_foil == "",0,1), 
+                                        meta.created_at = paste(data.name,data.edition,sep="")) %>%
+              select(meta.created_at,data.is_foil,data.number,data.price_retail,data.qty_retail,data.price_buy,data.qty_buying,QTY_Diff,Price_Diff,Tier) %>%
+              mutate(Tier = round(Tier,0)),
+            by = c("Semi"="meta.created_at","version"="data.is_foil","number"="data.number")) %>% 
+  rename(ck_retail = data.price_retail,ck_qty = data.qty_retail,ck_buy = data.price_buy,ck_buy_qty = data.qty_buying) %>%
+  distinct() %>% 
+  mutate(my_ratio = round(exp_offer / cs_price,2),
+         ck_ratio = round(ck_buy/ck_retail,2)) %>%
+  select(card,set,avg_daily_orders,max_order_size,avg_sell_price) %>%
+  filter(avg_daily_orders >= 10 & avg_sell_price >= 3) %>%
+  mutate(post_fee_value = round(avg_sell_price * .80,2),
+         desired_buy_price = round(post_fee_value * .60,2),
+         pay_off = post_fee_value - desired_buy_price) %>%
+  filter(pay_off >= 3)
+
+bs2_additions_tbl = data.frame(Quantity        = 12                  ,
+                               Tradelist_Count = 0                   ,
+                               Name            = bs2$card,
+                               Edition         = bs2$set,
+                               Condition       = "Near Mint"         ,
+                               Language        = "English"           ,
+                               Finish          = ""                  ,
+                               Tags            = ""                  ,
+                               min_value       = bs2$desired_buy_price) %>% distinct()
+
 bs_additions_tbl = data.frame(Quantity        = 12                  ,
                               Tradelist_Count = 0                   ,
                               Name            = bs_extended_tbl$card,
@@ -1183,6 +1234,11 @@ bs_additions_tbl = data.frame(Quantity        = 12                  ,
                               Finish          = ""                  ,
                               Tags            = ""                  ,
                               min_value       = bs_extended_tbl$desired_buy_price) %>% distinct()
+
+bs_additions_tbl = rbind(bs_additions_tbl,bs2_additions_tbl) %>% 
+  group_by(Quantity,Tradelist_Count,Name,Edition,Condition,Language,Finish,Tags) %>%
+  summarize(min_value = max(min_value)) %>%
+  ungroup()
 
 })
 #CardSphere_Final_Output
