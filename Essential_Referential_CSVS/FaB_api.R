@@ -1,5 +1,5 @@
 install.packages("pacman")
-pacman::p_load(httr,jsonlite,tidyverse,bigrquery,RSelenium,rvest,googlesheets4,googledrive,anytime,lubridate,janitor)
+pacman::p_load(httr,jsonlite,tidyverse,bigrquery,RSelenium,rvest,googlesheets4,googledrive,anytime,lubridate)
 gaeas_cradle <- function(email){
     con <- dbConnect(
         bigrquery::bigquery(),
