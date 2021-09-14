@@ -279,7 +279,26 @@ CS_Additions = function(IP){
           },  error = function(e){Sys.sleep(.2)})
         )
       } 
-      
+      if(additional_minned_history$Name[i] == "Fury"){
+        suppressMessages(
+          tryCatch(expr = {
+            list_check = remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[1]/div/div[2]/ul/li[2]')
+            if(!is.na(list_check$getElementText() %>% unlist())){
+              Card_Options <- remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[1]/div/div[2]/ul/li[12]')
+              Card_Options$clickElement()
+              Card_Options$sendKeysToElement(list(key = "down_arrow"))}
+          },  error = function(e){Sys.sleep(.2)}))
+          }
+      if(additional_minned_history$Name[i] == "Grief"){
+        suppressMessages(
+          tryCatch(expr = {
+            list_check = remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[1]/div/div[2]/ul/li[2]')
+            if(!is.na(list_check$getElementText() %>% unlist())){
+              Card_Options <- remDr$findElement('xpath','//*[@id="wants"]/div[1]/form/div[1]/div/div[2]/ul/li[2]')
+              Card_Options$clickElement()
+              Card_Options$sendKeysToElement(list(key = "down_arrow"))}
+          },  error = function(e){Sys.sleep(.2)}))
+      }
       
       Sys.sleep(1)
 
