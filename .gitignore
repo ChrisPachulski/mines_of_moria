@@ -2,3 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
+.log
+
+zed_run/zed_run_massive_history.csv
