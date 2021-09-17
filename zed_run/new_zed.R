@@ -1,14 +1,7 @@
 rm(list = ls())
-options(java.parameters = "-Xmx16g")
+options(java.parameters = "-Xmx32g")
 `%!in%` = Negate(`%in%`)
 pacman::p_load(httr,tidyverse,lubridate,bigrquery,googledrive,googlesheets4,stats,xlsx,readxl,janitor,rvest,coinmarketcapr,jsonlite)
-
-# https://coinmarketcap.com/api/
-# Get Yo Token. Fool.
-# I saved mine in same path as a json file
-setup(api_key = fromJSON(paste0(path,"coinmarket.json"))$token)
-ETH_Value = get_crypto_quotes(symbol="ETH")
-ETH_USD = ETH_Value$price
 
 path = "/home/cujo253/mines_of_moria/zed_run/"
 custom_stable = read_xlsx(path = paste0(path,"zed_stable_list.xlsx"),sheet="horses") %>% clean_names()
@@ -18,6 +11,13 @@ Default = "Excel"
 Export = "Excel"
 
 # Set Up ------------------------------------------------------------------
+# https://coinmarketcap.com/api/
+# Get Yo Token. Fool.
+# I saved mine in same path as a json file
+
+setup(api_key = fromJSON(paste0(path,"coinmarket.json"))$token)
+ETH_Value = get_crypto_quotes(symbol="ETH")
+ETH_USD = ETH_Value$price
 
 gaeas_cradle <- function(email,project,dataset){
     con <- dbConnect(
@@ -426,9 +426,17 @@ excel_exporter()
 
 
 # Function for Races! -----------------------------------------------------
-#This will make Hawku upset with me.
-#Please don't make Hawku upset with me.
-horse_list = c("Mig 29")
+# This will make Hawku upset with me.
+# Please don't make Hawku upset with me.
+
+# Since Hawku's CSV update daily, for newer horses
+# or for general curiosity, we can scrape
+# know your horse for real time updates
+# This is only for Overall stats right now.
+# I haven't written a class version yet.
+# This function has thus been named, with affection,
+# as `i_wanna_know_now_damn_it`
+horse_list = c("Peggy")
 i_wanna_know_now_damn_it(horse_list)
 
 
@@ -437,18 +445,24 @@ i_wanna_know_now_damn_it(horse_list)
 filter_horses = class_overview_tbl %>%
     filter(Count >= 15) %>%
     filter(Count <= 150) %>%
-    filter(Base_Fire_Rate >= .20) %>%
+    filter(Base_Fire_Rate >= .40) %>%
     filter(SD_Delta >= .05) %>% 
     #filter(class == 5) %>%
     filter(Skew >= -.01 & Skew <= .01) %>%
     arrange(horse_name,desc(distance)) 
 
+# Preps a list of horse names and id's for 
+# url grabs and human eyes at the end.
 horses_of_interest = filter_horses %>%
     select(horse_name) %>%
     left_join(racing_data %>% select(horse_name,horse_id),
               by = c("horse_name"="horse_name")) %>%
     distinct() %>% select(horse_id) %>%
     as.list()
+
+# Once again, we will see which of the horses
+# meet our requirements above and if they're for sale
+# If so, we compile them into a short list :)
 cost = NULL
 for(i in 1:length(horses_of_interest$horse_id)){
     Sys.sleep(.1)
@@ -470,6 +484,7 @@ for(i in 1:length(horses_of_interest$horse_id)){
     buys = data.frame(horse_id = c(horses_of_interest$horse_id[i]),cost = c(buy_now))
     cost = rbind(cost,buys)
 }
+
 cost %>% 
     filter(cost != "Not For Sale") %>%
     mutate(cost = round(as.numeric(cost),2)) %>%
