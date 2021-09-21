@@ -257,7 +257,7 @@ length(stacked_text$editions)
 #old = all_data
 #Empty dictionary for all the goodies
 all_data = NULL
-
+q = 1
 tcg_data_grab = function(input = q){
   Sys.sleep(1.5)
   gc()
@@ -347,7 +347,7 @@ tcg_data_grab = function(input = q){
   # Get a list of tcgIds from whatever source you have
   # I adjust to greater than $5 because I act on this information and I'd like to get it in a timely manner, 
   # entirely arbitrary filter
-  tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >=3) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
+  tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >=5) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
   
   # Some sets don't have any cards greater than $5, continue loop if so
   if(nrow(tcg_ids_of_interest)==0){print(paste("No Cards in",stacked_text$editions[q],"Moving On!"))}
@@ -434,7 +434,7 @@ tcg_data_grab = function(input = q){
     all_cards_inventory =rbind(all_cards_inventory,card_inventory)
     
     
-    b = 2
+    b = 1
     # Retrieve the latest sales for just yesterday
     # Doeesn't make sense to pick today as sales aren't completed
     # And going further back, while possible, very time consuming
@@ -444,7 +444,11 @@ tcg_data_grab = function(input = q){
       
       Sys.sleep(.10)
       
-      recent_sales_raw_list = GET(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales?offset=",offsets[b],"&limit=25",sep=""))
+      body = "{}"
+      
+
+      recent_sales_raw_list = POST(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales?offset=",offsets[b],"&limit=25",sep=""),content_type_json(),body=body)
+      
       
       test_value = 0
       
@@ -641,7 +645,7 @@ for(q in 1:length(stacked_text$editions)){
                     )},error=function(e){NULL
                   })
   all_data = rbind(all_data,all_set_sales)
-  Sys.sleep(sample(.29:1.63, 1))
+  Sys.sleep(sample(.09:.23, 1))
   setTxtProgressBar(pb,Q)
   Q <- Q+1
 }
