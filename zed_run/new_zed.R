@@ -31,7 +31,7 @@ gaeas_cradle <- function(email,project,dataset){
     return(con)
 }
 big_query_connection = function(email,project,dataset){tryCatch({
-    con <- gaeas_cradle(email,project,dataset)
+    con <- gaeas_cradle(email = email,project = project,dataset=dataset)
     statement = paste0("SELECT * FROM `",project,".",dataset,".all`")
     racing_data = dbSendQuery(con, statement = statement) %>% dbFetch( n = -1)
     
@@ -132,8 +132,8 @@ big_query_connection = function(email,project,dataset){tryCatch({
     else{
         gc()
         
-        con <- gaeas_cradle("wolfoftinstreet@gmail.com")
-        mybq <- bq_table(project = "gaeas-cradle", dataset = "zed_run", table = "all")
+        con <- gaeas_cradle(email = email, project = project, dataset = dataset)
+        mybq <- bq_table(project = project, dataset = dataset, table = "all")
         bq_table_upload(x=mybq, values = racing_data, fields=as_bq_fields(racing_data),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
         
         gc()
@@ -286,9 +286,9 @@ i_wanna_race = function(horse_list,distance,class){
 if(Default == "Excel"){
     racing_data = excel_csv_connection()
 } else {
-    big_query_connection(email = "abc@gmail.com",
+    big_query_connection(email = "wolfoftinstreet@gmail.com",
                          project = "gaeas-cradle",
-                         dataset = "premiums")
+                         dataset = "zed_run")
 }
 
 # Overall Race Times ------------------------------------------------------
@@ -311,7 +311,7 @@ ovr_baseline_stats = racing_data %>%
 colnames(ovr_baseline_stats) = paste("Base",colnames(ovr_baseline_stats),sep = "_")
 
 horsea_tbl = racing_data %>%
-    filter(place >= 1 & place <= 3) %>%
+    #filter(place >= 1 & place <= 3) %>%
     group_by(horse_name,distance) %>%
     summarize(
         Count = n(),
@@ -361,13 +361,15 @@ class_baseline_stats = racing_data %>%
         SD = sd(horse_time),
         `25%` =  quantile(horse_time,c(.25)),,
         Median = round(median(horse_time,na.rm=T),2),
-        `75%` = quantile(horse_time,c(.75))
+        `75%` = quantile(horse_time,c(.75)),
+        place = round(sum(ifelse((place == 1 | place == 2 | place == 3),1,0))/Count,2),
+        fire_place = round(sum(ifelse((place == 1 | place == 2 | place == 3)&(fire ==1)&(is.na(odds)),1,0))/Count,2)
     ) %>%
     ungroup()
 colnames(class_baseline_stats) = paste("Base",colnames(class_baseline_stats),sep = "_")
 
 horsea_classes_tbl = racing_data %>%
-    #filter(horse_name %in% custom_stable$horse_names) %>%
+    #filter(place >= 1 & place <= 3) %>%
     group_by(horse_name,class,distance) %>%
     summarize(
         Count = n(),
@@ -379,11 +381,16 @@ horsea_classes_tbl = racing_data %>%
         SD = sd(horse_time),
         `25%` = quantile(horse_time,c(.25)),
         Median = round(median(horse_time,na.rm=T),2),
-        `75%` = quantile(horse_time,c(.75))
+        `75%` = quantile(horse_time,c(.75)),
+        place = round(sum(ifelse((place == 1 | place == 2 | place == 3),1,0))/Count,2),
+        fire_place = round(sum(ifelse((place == 1 | place == 2 | place == 3)&(fire ==1)&(is.na(odds)),1,0))/Count,6)
     ) %>%
     replace(is.na(.),0) %>%
     ungroup() %>% 
     arrange(horse_name,desc(class),distance)
+
+horsea_classes_tbl %>% filter(horse_name == "Consistency") %>% filter(class == 3)
+racing_data %>% filter(is.na(odds))
 
 class_overview_tbl = horsea_classes_tbl %>%
     left_join(class_baseline_stats,by=c("class"="Base_class","distance"="Base_distance")) %>%
@@ -396,7 +403,9 @@ class_overview_tbl = horsea_classes_tbl %>%
         Max_Speed = (((Mean-(2*SD))-(Base_Mean-(2*Base_SD)))/Base_SD)*-1,
         Z_Top = round((`Base_25%`-`25%`)/Base_SD,2),
         Z_Bottom = round((`Base_75%`-`75%`)/Base_SD,2),
-        Skew = Z_Top - Z_Bottom
+        Skew = Z_Top - Z_Bottom,
+        place = round((Base_place-place)/Base_place,2),
+        fire_place = round((Base_fire_place - fire_place)/Base_Fire_Rate,2)
         
     ) %>% 
     ungroup() %>%
@@ -443,12 +452,9 @@ i_wanna_know_now_damn_it(horse_list)
 # Let's Go Shopping! ------------------------------------------------------
 # Choose your desired filters
 filter_horses = class_overview_tbl %>%
-    filter(Count >= 15) %>%
-    filter(Count <= 150) %>%
-    filter(Base_Fire_Rate >= .40) %>%
-    filter(SD_Delta >= .05) %>% 
-    #filter(class == 5) %>%
-    filter(Skew >= -.01 & Skew <= .01) %>%
+    filter(Count >= 50) %>%
+    filter(Count <= 500) %>%
+    filter(Base_Speed >= .20) %>%
     arrange(horse_name,desc(distance)) 
 
 # Preps a list of horse names and id's for 
@@ -488,9 +494,15 @@ for(i in 1:length(horses_of_interest$horse_id)){
 cost %>% 
     filter(cost != "Not For Sale") %>%
     mutate(cost = round(as.numeric(cost),2)) %>%
-    left_join(racing_data %>% select(horse_name,horse_id),
+    left_join(racing_data %>% select(horse_name,horse_id,genotype,bloodline,breed_type),
               by = c("horse_id"="horse_id")) %>%
     distinct() %>%
-    select(horse_id,horse_name,cost) %>%
+    select(horse_id,horse_name,genotype,bloodline,breed_type,cost) %>%
     left_join(filter_horses, by = c("horse_name"="horse_name")) %>%
     arrange(cost)
+
+
+# Individual Horse Lists --------------------------------------------------
+horse_list = c("Consistency")
+class_overview_tbl %>% filter(horse_name %in% horse_list) %>% filter(class == 5)
+selection_overview_tble %>% filter(horse_name %in% horse_list) 

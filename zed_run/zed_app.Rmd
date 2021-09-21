@@ -1,0 +1,37 @@
+---
+title: "Zed.Run - Tin Street Tools"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+---
+
+```{r setup, include=FALSE}
+require(pacman)
+pacman::p_load(flexdashboard,httr,tidyverse,lubridate,bigrquery,googledrive,googlesheets4,stats,xlsx,readxl,janitor,rvest,coinmarketcapr,jsonlite)
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart A
+
+```{r}
+
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+
+```
+
+### Chart C
+
+```{r}
+
+```
+
