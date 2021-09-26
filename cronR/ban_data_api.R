@@ -1,5 +1,5 @@
 require("pacman")
-pacman::p_load(tidyverse,httr,bigrquery,lubridate,jsonlite)
+pacman::p_load(tidyverse,httr,bigrquery,lubridate,jsonlite,data.table)
 gaeas_cradle <- function(email){
     con <- dbConnect(
         bigrquery::bigquery(),
@@ -136,33 +136,48 @@ mtgjson_roster_update = function() {
 }
 ban_data_retrieval = function(){
     
-    BAN_data = GET("https://www.mtgban.com/api/mtgban/all.json?id=mtgjson&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjUzNDAxMzEzJlNpZ25hdHVyZT1kbjRUSWd2Q3hTWEpCZmtYS0JpRGNhRmNpZXMlM0QmVXNlckVtYWlsPXdvbGYlNDBtdGdiYW4uY29t") %>%
+    BAN_data = GET("https://www.mtgban.com/api/mtgban/all.json?id=mtgjson&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjUzNDAxMzEzJlNpZ25hdHVyZT1kbjRUSWd2Q3hTWEpCZmtYS0JpRGNhRmNpZXMlM0QmVXNlckVtYWlsPXdvbGYlNDBtdGdiYW4uY29t",content_type_json()) %>% 
         content("parsed")
-    v = 1
     
+    v = 1
+
     for(v in 1:2){
         if(v == 1){
+            full_item_tbl = NULL
+            for(aa in 1:length(BAN_data$buylist %>% names())){
+                for(bbb in 1:length(BAN_data$buylist[[aa]] %>% names())){ 
+                    for(cccc in 1:length(BAN_data$buylist[[aa]] %>% .[[bbb]] %>% names())){
+                        
+                        uuid = BAN_data$buylist %>% .[aa] %>% names()
+                        vendor = BAN_data$buylist[[aa]] %>% .[bbb] %>% names()
+                        type = BAN_data$buylist[[aa]] %>% .[[bbb]] %>% names()
+                        value = BAN_data$buylist[[aa]] %>% .[[bbb]] %>% .[[cccc]]
+                        
+                        line_item = cbind(vendor,uuid,type,value)
+                        
+                        full_item_tbl = rbind(full_item_tbl,line_item)
+                    }
+                }
+            }
             
-            semi_unnested = map_df(BAN_data$buylist, ~ replace(.x, is.null(.x), NA), .id = "uuid") 
-            buylist_master_tbl = NULL
-            
-            buylist_vendor_tbl = semi_unnested %>% select(-uuid) %>% 
-                colnames() %>% as_tibble() %>% 
-                mutate(id = ifelse(grepl("^ABU$",value),1,
-                                   ifelse(grepl("^CK$",value),2,
-                                          ifelse(grepl("^CSI$",value),3,
-                                                 ifelse(grepl("^MS$",value),4,
-                                                        ifelse(grepl("^SCG$",value),5,
-                                                               ifelse(grepl("^TAT$",value),6,
-                                                                      ifelse(grepl("^TCGMkt$",value),7,
-                                                                             ifelse(grepl("^95$",value),8,
-                                                                                    ifelse(grepl("^CS$",value),9,
-                                                                                           ifelse(grepl("^MMTG$",value),10,
-                                                                                                  ifelse(grepl("^SZ$",value),11,
-                                                                                                         ifelse(grepl("^HA$",value),12,
-                                                                                                                ifelse(grepl("^BP$",value),13,0))))))))))))) ) %>%  
-                rename(vendor=value) %>%
-                select(id,vendor) %>%
+    
+            buylist_master_tbl = full_item_tbl %>% as_tibble() %>%
+                mutate(value = as.numeric(value))  %>% 
+                mutate(id = ifelse(grepl("^ABU$",vendor),1,
+                                   ifelse(grepl("^CK$",vendor),2,
+                                          ifelse(grepl("^CSI$",vendor),3,
+                                                 ifelse(grepl("^MS$",vendor),4,
+                                                        ifelse(grepl("^SCG$",vendor),5,
+                                                               ifelse(grepl("^TAT$",vendor),6,
+                                                                      ifelse(grepl("^TCGMkt$",vendor),7,
+                                                                             ifelse(grepl("^95$",vendor),8,
+                                                                                    ifelse(grepl("^CS$",vendor),9,
+                                                                                           ifelse(grepl("^MMTG$",vendor),10,
+                                                                                                  ifelse(grepl("^SZ$",vendor),11,
+                                                                                                         ifelse(grepl("^HA$",vendor),12,
+                                                                                                                ifelse(grepl("^BP$",vendor),13,0))))))))))))) ) %>%
+                
+                mutate_if(is.character,as.factor) %>%
                 mutate(description = ifelse(id == 1, "ABU Buylist",
                                             ifelse(id == 2, "Card Kingdom Buylist",
                                                    ifelse(id == 3, "Cool Stuff Inc Buylist",
@@ -176,61 +191,34 @@ ban_data_retrieval = function(){
                                                                                                            ifelse(id == 11, "Strikezone Buylist",
                                                                                                                   ifelse(id == 12, "Hareruya Buylist",
                                                                                                                          ifelse(id == 13, "Blue Print Bulk Buylist",""
-                                                                                                                                              ))))))))))))))
-            for (i in 2:(nrow(buylist_vendor_tbl)+1) ) {
-                information = semi_unnested[,c(1,i)] %>% # creates the 'value' as a `list` column
-                    mutate(uuid = uuid,
-                           name =  map(enframe(semi_unnested[[i]])$name, as.character),
-                           value = map(enframe(semi_unnested[[i]])$value, as.character)) %>% 
-                    select(uuid,name,value) %>% distinct() %>%
-                    unnest(cols = c(name, value)) %>% rename(hasFoil = name, offer =value) %>%
-                    mutate(Date = ymd(Sys.Date()),
-                           offer = as.numeric(offer),
-                           hasFoil = ifelse(hasFoil == "foil",1,0),
-                           vendor =  i - 1) %>%
-                    select(Date, everything())
-                if(i == 2){
-                    abu_bl = information
-                }else if (i == 3) {
-                    ck_bl = information
-                }else if (i == 4) {
-                    csi_bl = information
-                }else if (i == 5) {
-                    ms_bl = information
-                }else if (i == 6) {
-                    scg_bl = information
-                }else if (i == 7) {
-                    tat_bl = information
-                }else if (i == 8) {
-                    tcg_bl = information
-                }else if (i == 9) {
-                    `95_bl` = information
-                }else if (i == 10) {
-                    cs_bl = information
-                }else if (i == 11) {
-                    mmtg_f = information
-                }else if (i == 12) {
-                    sz_bl = information
-                }else if (i == 13) {
-                    ha_bl = information
-                }else if (i == 14) {
-                    bp_bl = information
-                }
+                                                                                                                         )))))))))))))) %>%
+                rename(hasFoil=type) %>%
+                mutate(hasFoil = ifelse(hasFoil == "foil",1,ifelse(hasFoil == "etched",2,0)),
+                       Date = ymd(Sys.Date())) %>%
+                select(Date,everything())
                 
-                buylist_master_tbl = rbind(buylist_master_tbl,information)
-                
-            }
+       
         } else{
             
-            semi_unnested = map_df(BAN_data$retail, ~ replace(.x, is.null(.x), NA), .id = "uuid") 
+            full_item_tbl = NULL
+            for(aa in 1:length(BAN_data$retail %>% names())){
+                for(bbb in 1:length(BAN_data$retail[[aa]] %>% names())){ 
+                    for(cccc in 1:length(BAN_data$retail[[aa]] %>% .[[bbb]] %>% names())){
+                        
+                        uuid = BAN_data$retail %>% .[aa] %>% names()
+                        vendor = BAN_data$retail[[aa]] %>% .[bbb] %>% names()
+                        type = BAN_data$retail[[aa]] %>% .[[bbb]] %>% names()
+                        value = BAN_data$retail[[aa]] %>% .[[bbb]] %>% .[[cccc]]
+                        
+                        line_item = cbind(vendor,uuid,type,value)
+                        
+                        full_item_tbl = rbind(full_item_tbl,line_item)
+                    }
+                }
+            }
             
-            retail_master_tbl = NULL
-            
-            retail_vendor_tbl = semi_unnested %>% select(-uuid) %>% 
-                colnames() %>% as_tibble() %>% 
-                mutate(id = seq(nrow(.))) %>% 
-                rename(vendor=value) %>%
-                select(id,vendor) %>%
+            retail_master_tbl = full_item_tbl %>% as_tibble() %>%
+                mutate(value = as.numeric(value))  %>% 
                 mutate(id = ifelse(grepl("^CK$",vendor),1,
                                    ifelse(grepl("^CT$",vendor),2,
                                           ifelse(grepl("^MKM Low$",vendor),3,
@@ -247,68 +235,19 @@ ban_data_retrieval = function(){
                                                                                                                        ifelse(grepl("^AMZ$",vendor),14,
                                                                                                                               ifelse(grepl("^CSI$",vendor),15,
                                                                                                                                      ifelse(grepl("^MS$",vendor),16,
-                                                                                                                                            ifelse(grepl("^SZ$",vendor),17,0))))))))))))))))) )
+                                                                                                                                            ifelse(grepl("^SZ$",vendor),17,0))))))))))))))))) ) %>%
+                rename(hasFoil=type) %>%
+                mutate(hasFoil = ifelse(hasFoil == "foil",1,ifelse(hasFoil == "etched",2,0)),
+                       Date = ymd(Sys.Date())) %>%
+                select(Date,everything())
             
-            
-            
-            for (i in 2:18) {
-                semi_unnested_filtered = semi_unnested %>% select(uuid,CK,CT,`MKM Low`,`MKM Trend`,SCG,TAT,`TCG Direct Low`,`TCG Low`,`TCG Market`,`TCG Player`,`95`,`ABU`,`MMTG`,`AMZ`,CSI,MS,SZ)
-                information = semi_unnested_filtered[,c(1,i)] %>% # creates the 'value' as a `list` column
-                    mutate(uuid = uuid,
-                           name =  map(enframe(semi_unnested[[i]])$name, as.character),
-                           value = map(enframe(semi_unnested[[i]])$value, as.character)) %>% 
-                    select(uuid,name,value) %>% distinct() %>%
-                    unnest(cols = c(name, value)) %>% rename(hasFoil = name, retail =value)%>%
-                    mutate(Date = ymd(Sys.Date()),
-                           retail = as.numeric(retail),
-                           hasFoil = ifelse(hasFoil == "foil",1,0),
-                           vendor =  i- 1) %>%
-                    select(Date, everything())
-                
-                if(i == 2){
-                    ck_mkt = information
-                }else if (i == 3) {
-                    ct_mkt = information
-                }else if (i == 4) {
-                    mkm_low_mkt = information
-                }else if (i == 5) {
-                    mkm_trend_mkt = information
-                }else if (i == 6) {
-                    scg_mkt = information
-                }else if (i == 7) {
-                    tat_mkt = information
-                }else if (i == 8) {
-                    tcg_d_mkt = information
-                }else if (i == 9) {
-                    tcg_low = information
-                }else if (i == 10) {
-                    tcg_mkt = information
-                }else if (i == 11) {
-                    tcg = information
-                }else if (i == 12) {
-                    `95_mkt` = information
-                }else if (i == 13) {
-                    abu_mkt = information
-                }else if (i == 14) {
-                    mmtg_mkt = information
-                }else if (i == 15) {
-                    amz_mkt = information
-                }else if (i == 16) {
-                    csi_mkt = information
-                }else if (i == 17) {
-                    ms_mkt = information
-                }else if (i == 18) {
-                    sz_mkt = information
-                }
-                
-                retail_master_tbl = rbind(retail_master_tbl,information)   
-            }
-            
-        }
     }
     
+        retail_vendor_tbl = retail_master_tbl %>% select(id,vendor)
+        buylist_vendor_tbl = buylist_master_tbl %>% select(id,vendor,description)
     output = list(retail_vendor_tbl,buylist_vendor_tbl,retail_master_tbl, buylist_master_tbl)
     return(output)
+    }
 }
 con <- gaeas_cradle("wolfoftinstreet@gmail.com")
 

@@ -1276,11 +1276,14 @@ if(nrow(my_offer) == 0 ){additional_minned_history = NULL}else{
 additional_minned_history = rbind(additional_minned_history,bs_additions_tbl)
 
 additional_minned_history = additional_minned_history %>% 
+  mutate(Edition = gsub("Core Set 2019","Core 2019",Edition)) %>%
   mutate(Edition = gsub("Core Set 2020","Core 2020",Edition)) %>%
   mutate(Edition = gsub("Core Set 2021","Core 2021",Edition)) %>%
   mutate(Edition = gsub("Theros Beyond Death","Theros: Beyond Death",Edition)) %>%
   group_by(Quantity,Tradelist_Count,Name,Edition,Condition,Language,Finish,Tags) %>%
   summarize(min_value = min(min_value)) %>% ungroup()
+
+additional_minned_history %>% view()
 
 # additional_minned_history %>% view()
 
