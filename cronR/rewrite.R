@@ -328,7 +328,7 @@ CK_Smaller_List <- fromJSON("https://api.cardkingdom.com/api/pricelist")        
   select(uuid,everything())
 
 
-CK_Smaller_List %>% filter(`Card Name` == "Gideon of the Trials")
+#CK_Smaller_List %>% filter(`Card Name` == "Gideon of the Trials")
 # ck_new_list <- fromJSON("https://api.cardkingdom.com/api/v2/pricelist")
 # CK_Smaller <- fromJSON("https://api.cardkingdom.com/api/pricelist")
 # View(ck_new_list %>% as.data.frame() %>% filter(data.edition == "Double Masters"))
@@ -391,6 +391,7 @@ Basic_Market_Review <- CK_Smaller_List %>%
   select(ckid,CK_Key,`Card Name`, Set, Rarity, `NF/F`, Gold_Market, Qty_Des, BL_Value, Gold_Market) %>%
   replace_na(list(Gold_Market = 0)) %>%
   `colnames<-` (c("ckid","Key","Card","Set","Rarity","F/NF","MKT_Est","BL","BL Qty"))
+
 
 #CK Best Sellers####
 #library(foreach)
@@ -810,27 +811,25 @@ Sys.sleep(2)
 # remDr$switchToFrame(webElem[[1]])
 stacked_text <- NULL
 stacked_qty <- NULL
-numbers <- remDr$findElements('css','.search-filter__option-count')
+page_source = remDr$getPageSource()
+stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes(".checkbox__option-value") %>% html_text() %>% trimws()
+stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric()
 Sys.sleep(4)
-for(i in 1:length(numbers)){
-  text <- numbers[[i]]$getElementText()
-  stacked_qty <- rbind(stacked_qty,text)}
-Sys.sleep(4)
-options <- remDr$findElements('css','.checkbox__option-value')
-for(i in 1:length(options)){
-  text <- options[[i]]$getElementText()
-  stacked_text <- rbind(stacked_text,text)}
 
 stacked_text <- cbind(stacked_text,stacked_qty)
 stacked_backup <- stacked_text
 #stacked_text <- stacked_backup
+stacked_text <- stacked_text %>% as_tibble() %>% mutate(stacked_qty = as.numeric(stacked_qty))%>% 
+  slice(which.max(stacked_text == "Prerelease Cards") : n()) %>% 
+  mutate(case = ifelse(stacked_text == "Cards",1,NA)) %>%
+  fill(.,case,.direction = c("down")) %>% 
+  filter(is.na(case)) %>%
+  select(-case) %>%
+  rename("editions"="stacked_text", "qty"="stacked_qty") %>%
+  mutate(editions = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions)))))))
 
-stacked_text <- stacked_text %>% as.data.frame() %>% dplyr::slice(-c(1:45))
-rownames(stacked_text) <- seq(nrow(stacked_text))
-cutoff <- which(grepl("^Cards$",stacked_text$V1))
-stacked_text <- tryCatch({stacked_text %>% unnest(cols = c(V1,V2)) %>% dplyr::slice(-c(cutoff:nrow(stacked_text)),) %>% rename(c("V1" = "editions", "V2" = "qty"))},error = function(e){stacked_text %>% unnest(cols = c(V1,V2)) %>% dplyr::slice(-c(cutoff:nrow(stacked_text)),) %>% rename(c("editions" = "V1", "qty" = "V2"))}) %>% 
-  mutate(editions  = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions))))))) %>% mutate(qty = as.numeric(qty))
 stacked_text = stacked_text %>% na.omit()
+
 groupings <- NULL
 groupings <- as.numeric(stacked_text$qty[1])
 groupings <- rbind(groupings,(stacked_text$qty[1] + stacked_text$qty[2]))
@@ -869,7 +868,13 @@ stop_points <- tryCatch({stacked_text %>% group_by(groups) %>%
               grp_three = sum(qty[groups == 3]) %>% replace(. == 0, NA),
               grp_four = sum(qty[groups == 4]) %>% replace(. == 0, NA),
               grp_five = sum(qty[groups == 5]) %>% replace(. == 0, NA),
-              grp_six = sum(qty[groups == 6]) %>% replace(. == 0, NA))  %>% mutate(grp_amts = coacross(-groups)) %>% 
+              grp_six = sum(qty[groups == 6]) %>% replace(. == 0, NA),
+              grp_seven = sum(qty[groups == 7]) %>% replace(. == 0, NA),
+              grp_eight = sum(qty[groups == 8]) %>% replace(. == 0, NA),
+              grp_nine = sum(qty[groups == 9]) %>% replace(. == 0, NA),
+              grp_ten = sum(qty[groups == 10]) %>% replace(. == 0, NA),
+              grp_eleven = sum(qty[groups == 11]) %>% replace(. == 0, NA),
+              grp_twelve = sum(qty[groups == 12]) %>% replace(. == 0, NA))%>% mutate(grp_amts = coacross(-groups)) %>% 
     as.data.frame() %>%
     select(groups,grp_amts)}, 
     error = function(e){stacked_text %>% 
@@ -878,7 +883,13 @@ stop_points <- tryCatch({stacked_text %>% group_by(groups) %>%
                                        grp_three = sum(qty[groups == 3]) %>% replace(. == 0, NA),
                                        grp_four = sum(qty[groups == 4]) %>% replace(. == 0, NA),
                                        grp_five = sum(qty[groups == 5]) %>% replace(. == 0, NA),
-                                       grp_six = sum(qty[groups == 6]) %>% replace(. == 0, NA))  %>% mutate(grp_amts = coacross(-groups)) %>% as.data.frame() %>%
+                                       grp_six = sum(qty[groups == 6]) %>% replace(. == 0, NA),
+                                       grp_seven = sum(qty[groups == 5]) %>% replace(. == 0, NA),
+                                       grp_eight = sum(qty[groups == 5]) %>% replace(. == 0, NA),
+                                       grp_nine = sum(qty[groups == 5]) %>% replace(. == 0, NA),
+                                       grp_ten = sum(qty[groups == 5]) %>% replace(. == 0, NA),
+                                       grp_eleven = sum(qty[groups == 5]) %>% replace(. == 0, NA),
+                                       grp_twelve = sum(qty[groups == 5]) %>% replace(. == 0, NA))  %>% mutate(grp_amts = coacross(-groups)) %>% as.data.frame() %>%
         select(groups,grp_amts)})
 q = 1
 All_TCG_Sets <- NULL
@@ -1256,12 +1267,15 @@ TCG_Export <- TCG_Export %>% mutate(Set = Sets_V2$mtgjson[match(Set,Sets_V2$TCG_
 
 TCG_Export$number_key = trimws(paste(Updated_Tracking_Keys$abbr[match(TCG_Export$Product_ID,Updated_Tracking_Keys$param)],"-",TCG_Export$number,TCG_Export$hasFoil,sep=""))
 
-#TCG_Export %>% filter(grepl("Archfiend of Despair",Card_Name))
+TCG_Export <- TCG_Export %>% filter(!is.na(Set))
 
 CK_Smaller_List$param <- ifelse(is.na(CK_Smaller_List$param), Updated_Tracking_Keys$param[match(CK_Smaller_List$ckid,Updated_Tracking_Keys$ckid_f)], CK_Smaller_List$param)
 CK_Smaller_List$param <- ifelse(is.na(CK_Smaller_List$param), Updated_Tracking_Keys$param[match(paste(CK_Smaller_List$Set,CK_Smaller_List$number,sep=""),paste(Updated_Tracking_Keys$Set,Updated_Tracking_Keys$number,sep=""))], CK_Smaller_List$param)
 
 #CK_Smaller_List %>% filter(`NF/F` !="")
+bbb = CK_Smaller_List
+TCG_Export %>% filter(grepl("Esika.*Ch",Primary_Key))
+CK_Smaller_List %>% filter(grepl("Esika.*Ch",CK_Key))
 
 CK_Smaller_List <- CK_Smaller_List %>% mutate(CK_Key = trimws(CK_Key)) %>% 
   mutate(number_key = ifelse(
@@ -1280,7 +1294,7 @@ CK_Smaller_List <- CK_Smaller_List %>% mutate(CK_Key = trimws(CK_Key)) %>%
 
 Exclusion <- data.frame(Sets$Set_Excl,Sets$Excl_Excl) %>% `colnames<-`  (c("Set_Excl","Excl_Excl"))
 CK_Smaller_List$Exclusion <- Exclusion$Excl_Excl[match(CK_Smaller_List$Set,Exclusion$Set_Excl)]
-CK_Smaller_List$TCG_Price <- ifelse(CK_Smaller_List$Exclusion == "Exclude", TCG_Export$MKT[match(CK_Smaller_List$number_key,TCG_Export$number_key)], CK_Smaller_List$TCG_Price)
+CK_Smaller_List$TCG_Price <- ifelse(CK_Smaller_List$Exclusion == "Exclude", TCG_Export$MKT_EST[match(CK_Smaller_List$number_key,TCG_Export$number_key)], CK_Smaller_List$TCG_Price)
 #CK_Smaller_List <- CK_Smaller_List %>% select(!Exclusion)
 
 #TCG_Export %>% filter(number_key == "BBD-4")
@@ -1328,9 +1342,8 @@ Final_Export <- Final_Export %>% mutate(CK_MKT = Ranking$CK_MKT[match(CK_Key,Ran
   mutate(MKT_TS_Single = round((MKT * 1.08875)+.78,2)) %>% mutate(MKT_TS_Set = round(((MKT * 4)* 1.08875)+.78,2)) %>%
   mutate(`Single_Arb_%` = round((BL - MKT_TS_Single)/MKT_TS_Single,2)) %>% mutate(`Set_Arb_%` = round(((BL*4) - MKT_TS_Set)/MKT_TS_Set,2)) %>%
   arrange(desc(`Single_Arb_%`)) %>% mutate(Exclusion = Exclusion$Excl_Excl[match(Set,Exclusion$Set_Excl)]) %>%
-  mutate(Sellers = as.numeric(Sellers))
+  mutate(Sellers = as.numeric(Sellers)) %>% filter(!is.na(MKT))
 
-#Final_Export %>% filter(grepl("Remastered",Set))
 #Personal Recommended View
 #Final_Export %>% filter(`F/NF` == "") %>% filter(Exclusion != "Exclude") %>% filter(Sellers != "") %>% arrange(desc(`Set_Arb_%`)) %>% filter(Rarity == "M" |Rarity == "R") %>% filter(BL > 5.00)
 #Export Premium & TCG####
@@ -1408,6 +1421,7 @@ FM <- FM %>% #mutate(Set = ck_conversion$Standardized[match(Set,ck_conversion$CK
 mybq <- bq_table(project = "gaeas-cradle", dataset = "ck_funny_money", table = paste(gsub("-","_",currentDate),"_CK_Credit",sep=""))
 bq_table_upload(x=mybq, values = FM, fields=as_bq_fields(FM),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
 print("BQ CK_Funny_Money Upload Successful!")
+
 
 #Load in Dated Premium Reports####
 #View(Final_Export)

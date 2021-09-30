@@ -224,30 +224,24 @@ Sys.sleep(4)
 
 stacked_text <- NULL
 stacked_qty <- NULL
-numbers <- remDr$findElements('css','.search-filter__option-count')
+page_source = remDr$getPageSource()
+stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes(".checkbox__option-value") %>% html_text() %>% trimws()
+stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric()
 Sys.sleep(4)
-for(i in 1:length(numbers)){
-  text <- numbers[[i]]$getElementText()
-  stacked_qty <- rbind(stacked_qty,text)}
-Sys.sleep(4)
-options <- remDr$findElements('css','.checkbox__option-value')
-for(i in 1:length(options)){
-  text <- options[[i]]$getElementText()
-  stacked_text <- rbind(stacked_text,text)}
 
 stacked_text <- cbind(stacked_text,stacked_qty)
 stacked_backup <- stacked_text
 #stacked_text <- stacked_backup
-stacked_text <- stacked_text %>% as.data.frame() %>% slice(-c(1:45))
-rownames(stacked_text) <- seq(nrow(stacked_text))
-cutoff <- which(grepl("^Cards$",stacked_text$V1))
-stacked_text <- tryCatch({stacked_text %>% unnest(cols = c(V1,V2)) %>% slice(-c(cutoff:nrow(stacked_text)),) %>% rename(c("V1" = "editions", "V2" = "qty"))},error = function(e){stacked_text %>% unnest(cols = c(V1,V2)) %>% slice(-c(cutoff:nrow(stacked_text)),) %>% rename(c("editions" = "V1", "qty" = "V2"))}) %>% 
-  mutate(api_editions  = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions))))))) %>% mutate(qty = ceiling(as.numeric(qty)/100) ) %>%
-  mutate(api_editions = paste('"',api_editions,'"',sep=""))
-stacked_text = stacked_text[!grepl( "\"challenger-decks\"",stacked_text$api_editions),]
-stacked_text = stacked_text[!grepl("\"spellslinger-starter-kit\"",stacked_text$api_editions),]
-stacked_text = stacked_text[!grepl("\"box-sets\"",stacked_text$api_editions),]
-stacked_text = stacked_text[!grepl("\"magic-the-gathering-apparel\"",stacked_text$api_editions),]
+stacked_text <- stacked_text %>% as_tibble() %>% mutate(stacked_qty = as.numeric(stacked_qty))%>% 
+  slice(which.max(stacked_text == "Prerelease Cards") : n()) %>% 
+  mutate(case = ifelse(stacked_text == "Cards",1,NA)) %>%
+  fill(.,case,.direction = c("down")) %>% 
+  filter(is.na(case)) %>%
+  select(-case) %>%
+  rename("editions"="stacked_text", "qty"="stacked_qty") %>%
+  mutate(api_editions = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions)))))),
+         api_editions = paste('"',api_editions,'"',sep=""))
+
 stacked_text = stacked_text %>% na.omit()
 length(stacked_text$editions)
 
