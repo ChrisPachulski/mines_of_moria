@@ -251,13 +251,13 @@ stacked_text = stacked_text[!grepl("\"magic-the-gathering-apparel\"",stacked_tex
 stacked_text = stacked_text %>% na.omit()
 length(stacked_text$editions)
 
-
+stacked_text %>% view()
 
 # Begin Pull --------------------------------------------------------------
 #old = all_data
 #Empty dictionary for all the goodies
 all_data = NULL
-q = 1
+q = 12
 tcg_data_grab = function(input = q){
   Sys.sleep(1.5)
   gc()
@@ -454,11 +454,11 @@ tcg_data_grab = function(input = q){
       
       if(recent_sales_raw_list$status_code == 500){break}
       if(recent_sales_raw_list$status_code == 403){Sys.sleep(30);next}
-      try({if(length(recent_sales_raw_list %>% content("parsed") %>% .[[4]])==0){next}})
+      try({if(length(recent_sales_raw_list %>% content("parsed") %>% .[[5]])==0){next}})
       
-      try({if(identical(recent_sales_raw_list %>% content("parsed") %>% .[[4]], list()) ){next}})
+      try({if(identical(recent_sales_raw_list %>% content("parsed") %>% .[[5]], list()) ){next}})
       
-      tryCatch({recent_sales_raw_list = recent_sales_raw_list %>% content("parsed") %>% .[[4]]}, error = function(e){test_value = 1})
+      tryCatch({recent_sales_raw_list = recent_sales_raw_list %>% content("parsed") %>% .[[5]]}, error = function(e){test_value = 1})
       
       if(test_value == 0){
         
@@ -657,6 +657,6 @@ con <- gaeas_cradle("wolfoftinstreet@gmail.com")
 mybq <- bq_table(project = "gaeas-cradle", dataset = "mtg_churn", table = paste(gsub("-","_",Sys.Date()),"_mtg_churn",sep=""))
 bq_table_upload(x=mybq, values = all_data, fields=as_bq_fields(all_data),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
 
-
+all_data %>% arrange(desc(orders))
 #all_data %>% arrange(desc(orders)) %>% view()
 
