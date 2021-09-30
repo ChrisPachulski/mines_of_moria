@@ -79,6 +79,7 @@ invisible(gaeas_cradle <- function(email){
   options(scipen = 20)
   con
 })
+
 tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
@@ -331,9 +332,9 @@ sheet_write(
   sheet = "Current_BuyList"
 )
 
-setwd("/home/cujo253/mines_of_moria/Metrics/Daily_Velocity_Trackers")
-csvFileName <- paste(currentDate,"_Velocity",".csv",sep="")
-write.csv(Dollar_Slim_CK_Buylist, file=csvFileName, row.names = FALSE)
+#setwd("/home/cujo253/mines_of_moria/Metrics/Daily_Velocity_Trackers")
+#csvFileName <- paste(currentDate,"_Velocity",".csv",sep="")
+#write.csv(Dollar_Slim_CK_Buylist, file=csvFileName, row.names = FALSE)
 
 Dollar_Slim_CK_Buylist <- clean_names(Dollar_Slim_CK_Buylist)
 

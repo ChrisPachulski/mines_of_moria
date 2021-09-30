@@ -139,10 +139,6 @@ ban_data_retrieval = function(){
     BAN_data = GET("https://www.mtgban.com/api/mtgban/all.json?id=mtgjson&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjUzNDAxMzEzJlNpZ25hdHVyZT1kbjRUSWd2Q3hTWEpCZmtYS0JpRGNhRmNpZXMlM0QmVXNlckVtYWlsPXdvbGYlNDBtdGdiYW4uY29t",content_type_json()) %>% 
         content("parsed")
     
-    v = 1
-
-    for(v in 1:2){
-        if(v == 1){
             full_item_tbl = NULL
             for(aa in 1:length(BAN_data$buylist %>% names())){
                 for(bbb in 1:length(BAN_data$buylist[[aa]] %>% names())){ 
@@ -197,9 +193,9 @@ ban_data_retrieval = function(){
                        Date = ymd(Sys.Date())) %>%
                 select(Date,everything())
                 
+            buylist_vendor_tbl = buylist_master_tbl %>% select(id,vendor,description)
        
-        } else{
-            
+
             full_item_tbl = NULL
             for(aa in 1:length(BAN_data$retail %>% names())){
                 for(bbb in 1:length(BAN_data$retail[[aa]] %>% names())){ 
@@ -241,13 +237,10 @@ ban_data_retrieval = function(){
                        Date = ymd(Sys.Date())) %>%
                 select(Date,everything())
             
-    }
-    
-        retail_vendor_tbl = retail_master_tbl %>% select(id,vendor)
-        buylist_vendor_tbl = buylist_master_tbl %>% select(id,vendor,description)
-    output = list(retail_vendor_tbl,buylist_vendor_tbl,retail_master_tbl, buylist_master_tbl)
-    return(output)
-    }
+            retail_vendor_tbl = retail_master_tbl %>% select(id,vendor)
+            
+            ban_data = list(retail_vendor_tbl,buylist_vendor_tbl,retail_master_tbl, buylist_master_tbl)
+    return(ban_data)
 }
 con <- gaeas_cradle("wolfoftinstreet@gmail.com")
 
@@ -256,7 +249,7 @@ ban_data = ban_data_retrieval()
 mtgjson_roster = mtgjson_roster_update()
 
 
-
+con <- gaeas_cradle("wolfoftinstreet@gmail.com")
 mybq <- bq_table(project = "gaeas-cradle", dataset = "roster", table = paste("mtgjson_ban",sep=""))
 bq_table_upload(x=mybq, values = mtgjson_roster, fields=as_bq_fields(mtgjson_roster),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
 

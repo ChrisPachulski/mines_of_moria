@@ -4,18 +4,19 @@ options(httr_oob_default=TRUE)
 options(gargle_oauth_email = "pachun95@gmail.com")
 Rarity_Check <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv") %>% rename(name=card,Rarity=rarity)
 currentDate <- Sys.Date() - 161
-
+days = 162
 
 preliminary_tbl = data.frame(style = "preliminary", format = c("vintage","pauper","standard","pioneer","modern","legacy"))
 league_tbl = data.frame(style = "league", format = c("vintage","pauper","standard","pioneer","modern","legacy"))
 
 formats_tbl = rbind(league_tbl,preliminary_tbl)
 
-
-retrieve_decklists = function(formats_tbl,days = 30){
+d = 3
+retrieve_decklists = function(formats_tbl,days = 14){
     all_decklists = NULL
     for(d in 1:days){
         desired_date = (Sys.Date() + 1) - d
+        i = 1
         for(i in 1:nrow(formats_tbl)){
             url = paste("https://magic.wizards.com/en/articles/archive/mtgo-standings/",formats_tbl$format[i],"-",formats_tbl$style[i],"-",desired_date,sep="")
             tryCatch(
