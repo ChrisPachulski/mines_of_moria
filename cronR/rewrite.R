@@ -802,9 +802,11 @@ tryCatch({remDr$findElement('xpath','/html/body/div[5]/div/div/div/div/button/sp
          error = function(e){print("No msg box popped up")
          })
 Sys.sleep(2)
+tryCatch({
 tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
          error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
-         })
+         })}, 
+  error = function(e){print("No Drop Down")})
 Sys.sleep(2)
 
 # webElem <- remDr$findElements("css", "iframe")
