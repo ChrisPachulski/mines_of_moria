@@ -31,36 +31,36 @@ Sys.sleep(4)
 tryCatch({remDr$findElement('xpath','/html/body/div[5]/div/div/div/div/button/span')$clickElement()}, 
          error = function(e){print("No msg box popped up")
          })
-Sys.sleep(4)
-tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
-         error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
-         })
-Sys.sleep(4)
+Sys.sleep(2)
+tryCatch({
+    tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
+             error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
+             })}, 
+    error = function(e){print("No Drop Down")})
+Sys.sleep(2)
 
+# webElem <- remDr$findElements("css", "iframe")
+# remDr$switchToFrame(webElem[[1]])
 stacked_text <- NULL
 stacked_qty <- NULL
-numbers <- remDr$findElements('css','.search-filter__option-count')
+page_source = remDr$getPageSource()
+stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes(".checkbox__option-value") %>% html_text() %>% trimws()
+stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric()
 Sys.sleep(4)
-for(i in 1:length(numbers)){
-    text <- numbers[[i]]$getElementText()
-    stacked_qty <- rbind(stacked_qty,text)}
-Sys.sleep(4)
-options <- remDr$findElements('css','.checkbox__option-value')
-for(i in 1:length(options)){
-    text <- options[[i]]$getElementText()
-    stacked_text <- rbind(stacked_text,text)}
 
 stacked_text <- cbind(stacked_text,stacked_qty)
 stacked_backup <- stacked_text
 #stacked_text <- stacked_backup
-stacked_text <- stacked_text %>% as.data.frame() %>% slice(-c(1:48))
-rownames(stacked_text) <- seq(nrow(stacked_text))
-cutoff <- which(grepl("^Cards$",stacked_text$V1))
-stacked_text <- tryCatch({stacked_text %>% unnest(cols = c(V1,V2)) %>% slice(-c(cutoff:nrow(stacked_text)),) %>% rename(c("V1" = "editions", "V2" = "qty"))},error = function(e){stacked_text %>% unnest(cols = c(V1,V2)) %>% slice(-c(cutoff:nrow(stacked_text)),) %>% rename(c("editions" = "V1", "qty" = "V2"))}) %>% 
-    mutate(api_editions  = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions))))))) %>% mutate(qty = ceiling(as.numeric(qty)/100) ) %>%
-    mutate(api_editions = paste('"',api_editions,'"',sep=""))
+stacked_text <- stacked_text %>% as_tibble() %>% mutate(stacked_qty = as.numeric(stacked_qty))%>% 
+    slice(which.max(stacked_text == "Monarch") : n()) %>% 
+    mutate(case = ifelse(stacked_text == "Cards",1,NA)) %>%
+    fill(.,case,.direction = c("down")) %>% 
+    filter(is.na(case)) %>%
+    select(-case) %>%
+    rename("editions"="stacked_text", "qty"="stacked_qty") %>%
+    mutate(editions = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions)))))))
+
 stacked_text = stacked_text %>% na.omit()
-length(stacked_text$editions)
 q = 1
 tcg_data_grab = function(input = q){
     Sys.sleep(1.5)
@@ -179,7 +179,7 @@ tcg_data_grab = function(input = q){
     # Get a list of tcgIds from whatever source you have
     # I adjust to greater than $5 because I act on this information and I'd like to get it in a timely manner, 
     # entirely arbitrary filter
-    tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >= .25) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
+    tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >= .5) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
     
     # Some sets don't have any cards greater than $5, continue loop if so
     if(nrow(tcg_ids_of_interest)==0){print(paste("No Cards in",stacked_text$editions[q],"Moving On!"))}
@@ -281,18 +281,21 @@ tcg_data_grab = function(input = q){
             all_sales_for_card = NULL
             
             Sys.sleep(.10)
+            body = "{}"
             
-            recent_sales_raw_list = GET(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales?offset=",offsets[b],"&limit=25",sep=""))
+            
+            recent_sales_raw_list = POST(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales?offset=",offsets[b],"&limit=25",sep=""),content_type_json(),body=body)
+            
             
             test_value = 0
             
             if(recent_sales_raw_list$status_code == 500){break}
             if(recent_sales_raw_list$status_code == 403){Sys.sleep(30);next}
-            try({if(length(recent_sales_raw_list %>% content("parsed") %>% .[[4]])==0){next}})
+            try({if(length(recent_sales_raw_list %>% content("parsed") %>% .[[5]])==0){next}})
             
-            try({if(identical(recent_sales_raw_list %>% content("parsed") %>% .[[4]], list()) ){next}})
+            try({if(identical(recent_sales_raw_list %>% content("parsed") %>% .[[5]], list()) ){next}})
             
-            tryCatch({recent_sales_raw_list = recent_sales_raw_list %>% content("parsed") %>% .[[4]]}, error = function(e){test_value = 1})
+            tryCatch({recent_sales_raw_list = recent_sales_raw_list %>% content("parsed") %>% .[[5]]}, error = function(e){test_value = 1})
             
             if(test_value == 0){
                 
