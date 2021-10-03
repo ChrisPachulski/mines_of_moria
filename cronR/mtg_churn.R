@@ -210,17 +210,19 @@ Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>
 remDr <- chrome("138.68.229.207")
 remDr$navigate("https://www.tcgplayer.com/search/magic/product?productLineName=magic&page=1")
 Sys.sleep(4)
-remDr$findElement('xpath','//*[@id="app"]/div/section[2]/div/div[1]/button')$clickElement()
+try({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/div/div[1]/button')$clickElement()})
 Sys.sleep(4)
 
 tryCatch({remDr$findElement('xpath','/html/body/div[5]/div/div/div/div/button/span')$clickElement()}, 
          error = function(e){print("No msg box popped up")
          })
-Sys.sleep(4)
-tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
-         error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
-         })
-Sys.sleep(4)
+Sys.sleep(2)
+tryCatch({
+  tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
+           error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
+           })}, 
+  error = function(e){print("No Drop Down Selection Needed")})
+Sys.sleep(2)
 
 stacked_text <- NULL
 stacked_qty <- NULL
@@ -246,12 +248,12 @@ stacked_text = stacked_text %>% na.omit()
 length(stacked_text$editions)
 
 
-
 # Begin Pull --------------------------------------------------------------
 #old = all_data
 #Empty dictionary for all the goodies
 all_data = NULL
 
+q = 1
 tcg_data_grab = function(input = q){
   Sys.sleep(1.5)
   gc()
@@ -341,7 +343,7 @@ tcg_data_grab = function(input = q){
   # Get a list of tcgIds from whatever source you have
   # I adjust to greater than $5 because I act on this information and I'd like to get it in a timely manner, 
   # entirely arbitrary filter
-  tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >=10) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
+  tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >=5) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
   
   # Some sets don't have any cards greater than $5, continue loop if so
   if(nrow(tcg_ids_of_interest)==0){print(paste("No Cards in",stacked_text$editions[q],"Moving On!"))}
@@ -428,7 +430,7 @@ tcg_data_grab = function(input = q){
     all_cards_inventory =rbind(all_cards_inventory,card_inventory)
     
     
-    b = 2
+    b = 4
     # Retrieve the latest sales for just yesterday
     # Doeesn't make sense to pick today as sales aren't completed
     # And going further back, while possible, very time consuming
@@ -438,17 +440,21 @@ tcg_data_grab = function(input = q){
       
       Sys.sleep(.10)
       
-      recent_sales_raw_list = GET(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales?offset=",offsets[b],"&limit=25",sep=""))
+      body = paste0('{"listingType":"All","offset":',offsets[b],',"limit":25}')
+      
+      
+      recent_sales_raw_list = POST(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales",sep=""),content_type_json(),body=body)
+      
       
       test_value = 0
       
       if(recent_sales_raw_list$status_code == 500){break}
-      if(recent_sales_raw_list$status_code == 403){Sys.sleep(30);next}
-      try({if(length(recent_sales_raw_list %>% content("parsed") %>% .[[4]])==0){next}})
+      if(recent_sales_raw_list$status_code == 403){Sys.sleep(5);next}
+      try({if(length(recent_sales_raw_list %>% content("parsed") %>% .[[5]])==0){next}})
       
-      try({if(identical(recent_sales_raw_list %>% content("parsed") %>% .[[4]], list()) ){next}})
+      try({if(identical(recent_sales_raw_list %>% content("parsed") %>% .[[5]], list()) ){next}})
       
-      tryCatch({recent_sales_raw_list = recent_sales_raw_list %>% content("parsed") %>% .[[4]]}, error = function(e){test_value = 1})
+      tryCatch({recent_sales_raw_list = recent_sales_raw_list %>% content("parsed") %>% .[[5]]}, error = function(e){test_value = 1})
       
       if(test_value == 0){
         
@@ -536,8 +542,8 @@ tcg_data_grab = function(input = q){
           ungroup() %>%
           left_join(condition_item_info,by=c("version"="version","condition"="condition","dop"="dop")) %>%
           mutate(#con_orders = ifelse(max_order_size == 0,0,con_orders),
-                 orders = ifelse(max_order_size == 0,0,orders),
-                 loop = i)
+            orders = ifelse(max_order_size == 0,0,orders),
+            loop = i)
         
         all_sales_for_card = rbind(all_sales_for_card,cleaned_line_items) %>% distinct()
         
@@ -611,7 +617,7 @@ tcg_data_grab = function(input = q){
                    "condition"="condition")) %>%
     fill(dop,.direction=c("updown")) %>%
     replace(is.na(.),0) %>%
-    left_join(rankings %>% mutate(Product_ID = as.numeric(Product_ID)),by = c("productId"="Product_ID")) %>%
+    left_join(rankings %>% mutate(Product_ID = as.numeric(Product_ID)),by = c("productId"="Product_ID","version"="isFoil")) %>%
     rename(Date = dop) %>%
     select(Date, productId, everything()) %>%
     filter(!(all_quantity ==0 & sold_quantity == 0))
@@ -622,16 +628,22 @@ tcg_data_grab = function(input = q){
   return(all_set_sales)
 }
 
+total = length(stacked_text$editions) 
+pb <- txtProgressBar(min=0, max = total, style = 3)
+Q <- 1
+
 for(q in 1:length(stacked_text$editions)){
-#for(q in 5:5){
-  # Test for loop when debugging
-  #for(q in 3:3){
-  tryCatch({
-      tryCatch({all_set_sales = tcg_data_grab(q)}, 
-               error = function(e){all_set_sales = retry(expr = tcg_data_grab(q), maxErrors = 1, sleep=2)}
-      )},error=function(e){print("All Attempts Exhausted")
+  
+  suppressMessages(gc())
+  all_set_sales = tryCatch({
+    tryCatch({tcg_data_grab(q)}, 
+             error = function(e){suppressMessages(retry(expr = tcg_data_grab(q), maxErrors = 1, sleep=2))}
+    )},error=function(e){NULL
     })
   all_data = rbind(all_data,all_set_sales)
+  Sys.sleep(sample(.09:.23, 1))
+  setTxtProgressBar(pb,Q)
+  Q <- Q+1
 }
 
 #retry(tcg_data_grab(5),maxErrors = 3, sleep = 2)
@@ -640,6 +652,7 @@ for(q in 1:length(stacked_text$editions)){
 con <- gaeas_cradle("wolfoftinstreet@gmail.com")
 mybq <- bq_table(project = "gaeas-cradle", dataset = "mtg_churn", table = paste(gsub("-","_",Sys.Date()),"_mtg_churn",sep=""))
 bq_table_upload(x=mybq, values = all_data, fields=as_bq_fields(all_data),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
+
 
 
 #all_data %>% arrange(desc(orders)) %>% view()
