@@ -1,4 +1,28 @@
 install.packages("pacman")
+pacman::p_load(httr,jsonlite,tidyverse,bigrquery,RSelenium,rvest,googlesheets4,googledrive,anytime,lubridate)
+gaeas_cradle <- function(email){
+    con <- dbConnect(
+        bigrquery::bigquery(),
+        project = "gaeas-cradle",
+        dataset = "premiums",
+        billing = "gaeas-cradle"
+    )
+    bq_auth(email = email, use_oob = TRUE)
+    options(scipen = 20)
+    con
+}
+chrome <-function(ip){
+    remDr = remoteDriver(remoteServerAddr = ip, port = 4445, browser = "chrome")
+    remDr$open()
+    remDr$maxWindowSize()
+    remDr
+}
+currentDate <- Sys.Date()
+drive_auth(email = "pachun95@gmail.com", use_oob = T)
+gs4_auth(email = "pachun95@gmail.com", use_oob = T)
+
+# Set Retrieval for FaB ---------------------------------------------------
+install.packages("pacman")
 pacman::p_load(httr,jsonlite,tidyverse,bigrquery,RSelenium,rvest,googlesheets4,googledrive,anytime,lubridate,janitor)
 gaeas_cradle <- function(email){
     con <- dbConnect(
@@ -23,7 +47,7 @@ gs4_auth(email = "pachun95@gmail.com", use_oob = T)
 
 # Set Retrieval for FaB ---------------------------------------------------
 remDr <- chrome("64.225.20.203")
-remDr$navigate("https://www.tcgplayer.com/search/flesh-and-blood-tcg/product?productLineName=flesh-and-blood-tcg&page=1")
+try({remDr$navigate("https://www.tcgplayer.com/search/flesh-and-blood-tcg/product?productLineName=flesh-and-blood-tcg&page=1")})
 Sys.sleep(4)
 remDr$findElement('xpath','//*[@id="app"]/div/section[2]/div/div[1]/button')$clickElement()
 Sys.sleep(4)
@@ -171,7 +195,7 @@ tcg_data_grab = function(input = q){
         mutate(across(pitchValue:power,as.numeric))
     
     Best_Sellers_SR = rbind(Best_Sellers_SR,Best_Sellers_SR %>% mutate(hasFoil = 1)) %>% distinct()
-
+    
     # Sometimes the requests come in too quickly and tcg will forbid access, or
     # they're working on the backend and it results in a 403 call, account here to just 
     # continues loop if this element might fail
@@ -281,10 +305,10 @@ tcg_data_grab = function(input = q){
             all_sales_for_card = NULL
             
             Sys.sleep(.10)
-            body = "{}"
+            body = paste0('{"listingType":"All","offset":',offsets[b],',"limit":25}')
             
             
-            recent_sales_raw_list = POST(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales?offset=",offsets[b],"&limit=25",sep=""),content_type_json(),body=body)
+            recent_sales_raw_list = POST(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales",sep=""),content_type_json(),body=body)
             
             
             test_value = 0
@@ -469,7 +493,7 @@ tcg_data_grab = function(input = q){
         rename(Date = dop) %>%
         select(Date, productId, everything()) %>%
         filter(!(all_quantity ==0 & sold_quantity == 0))
-
+    
     
     # Append all info and repeat
     all_set_sales = rbind(all_set_sales,card_review)
@@ -611,6 +635,10 @@ roster_grab = function(input = q){
 
 ovr_roster = NULL
 all_data = NULL
+
+total = length(stacked_text$editions) 
+pb <- txtProgressBar(min=0, max = total, style = 3)
+Q = 1
 for(q in 1:length(stacked_text$editions)){
     
     suppressMessages(gc())
