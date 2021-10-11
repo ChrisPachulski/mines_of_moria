@@ -295,7 +295,7 @@ print("BQ Premium Upload Successful!")
 #Call functional (/slimmed) buylist via "CK_Buylist_Retrieved" data frame
 Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
 #View(Sets)
-ck_conversion <- read_csv("~/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
+ck_conversion <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
 
 tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
@@ -309,13 +309,13 @@ Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>
                                                                                         Key = trimws(paste(name,Set,Rarity," ",Foil,sep="")),
                                                                                         Semi = paste(name,Set,sep="")) 
 
-CK_Smaller_List <- fromJSON("https://api.cardkingdom.com/api/pricelist")                                                       %>% 
-  as.data.frame()                                                                                                %>%
+CK_Smaller_List <-base                                                                                               %>%
   mutate(data.edition = ifelse(data.edition == "Promotional",data.variation,data.edition))                       %>%
   mutate(data.edition = ifelse(grepl("The List",data.edition),gsub("\\/The List","",data.edition),data.edition)) %>%
   mutate(data.edition = ck_conversion$Standardized[match(data.edition,ck_conversion$CK)])                        %>%
   mutate(Semi = paste(data.name,data.edition, sep=""))                                                           %>%
   mutate(data.is_foil = ifelse(data.is_foil == "false", "", "FOIL"))                                             %>%
+  mutate(data.name = gsub("(\\s+Extended Art|\\s+Showcase)","",data.name) )                                      %>%
   mutate(rarity = Updated_Tracking_Keys$Rarity[match(Semi, Updated_Tracking_Keys$Semi)])                         %>%
   mutate(number = Updated_Tracking_Keys$number[match(Semi, Updated_Tracking_Keys$Semi)])                         %>%
   mutate(CK_Key = trimws(paste(data.name, data.edition, rarity," ",data.is_foil, sep="")))                       %>%
@@ -325,8 +325,7 @@ CK_Smaller_List <- fromJSON("https://api.cardkingdom.com/api/pricelist")        
   mutate(MTG_Gold_Key = paste(`Card Name`,Gold_Merge, sep =""))                                                  %>%
   na.omit() %>%
   left_join(Updated_Tracking_Keys %>% select(uuid,ckid), by = c("ckid"="ckid"))                                  %>%
-  select(uuid,everything())
-
+  select(uuid,everything())   
 
 #CK_Smaller_List %>% filter(`Card Name` == "Gideon of the Trials")
 # ck_new_list <- fromJSON("https://api.cardkingdom.com/api/v2/pricelist")
@@ -446,7 +445,6 @@ End_Time <- Sys.time()
 #stopCluster(cl)
 colnames(CK_Prices_df)[6] <- "Rank"
 ck_back_up = CK_Prices_df
-
 
 #CK_Prices_df = ck_back_up
 
@@ -795,7 +793,7 @@ sheet_write(
 remDr <- chrome("64.225.20.203")
 remDr$navigate("https://www.tcgplayer.com/search/magic/product?productLineName=magic")
 Sys.sleep(4)
-remDr$findElement('xpath','//*[@id="app"]/div/section[2]/div/div[1]/button')$clickElement()
+try({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/div/div[1]/button')$clickElement()})
 Sys.sleep(4)
 
 tryCatch({remDr$findElement('xpath','/html/body/div[5]/div/div/div/div/button/span')$clickElement()}, 
@@ -1262,6 +1260,7 @@ TCG_Vendor <- Vendor
 Middle_Confidence_Report <- TCG_Vendor
 TCG_Export = TCG
 
+
 Sets_V2 <- Sets[c(1:6)] %>% `colnames<-` (c("mtgjson","CK_BL_Scrape_Sets","MTG_Goldfish_Sets","GF_Abbr","GF_Abbr_Foil","TCG_Key"))
 
 
@@ -1276,8 +1275,6 @@ CK_Smaller_List$param <- ifelse(is.na(CK_Smaller_List$param), Updated_Tracking_K
 
 #CK_Smaller_List %>% filter(`NF/F` !="")
 bbb = CK_Smaller_List
-TCG_Export %>% filter(grepl("Esika.*Ch",Primary_Key))
-CK_Smaller_List %>% filter(grepl("Esika.*Ch",CK_Key))
 
 CK_Smaller_List <- CK_Smaller_List %>% mutate(CK_Key = trimws(CK_Key)) %>% 
   mutate(number_key = ifelse(
@@ -1365,6 +1362,7 @@ premium_bq_export <- premium_bq_export %>%
 mybq <- bq_table(project = "gaeas-cradle", dataset = "premiums", table = paste(gsub("-","_",currentDate),"_TCG_CK_Data",sep=""))
 bq_table_upload(x=mybq, values = premium_bq_export, fields=as_bq_fields(premium_bq_export),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
 print("BQ Premium Upload Successful!")
+
 
 #premium_bq_export %>% filter(Card =="Archfiend of Despair")
 
