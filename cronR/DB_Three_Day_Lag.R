@@ -31,10 +31,17 @@ gaeas_cradle <- function(email){
 }
 #3 Day lag####
 con <- gaeas_cradle("wolfoftinstreet@gmail.com")
-Sets <- read.csv("/home/cujo253/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+options(httr_oob_default=TRUE) 
+options(gargle_oauth_email = "pachun95@gmail.com")
+drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+gc()
+#drive_create("TCG_Review")
+ss <- drive_get("Sets")
 
-ck_conversion <- read_csv("~/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
-
+Sets <- read_sheet(ss,"Sets") %>% mutate_if(is.character,as.factor)
+#View(Sets)
+ck_conversion <- read_sheet(ss,"mtgjson_ck_sets")
 tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
     #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
@@ -145,7 +152,7 @@ FROM `gaeas-cradle.ck_funny_money.*` a
 WHERE  _TABLE_SUFFIX BETWEEN 
   FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)) AND 
   FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL -2 DAY)) AND 
-  Date = Current_Date() - 3
+  Date = "2022-02-07"
 ), 
 t3 as ( 
 SELECT t1.Key, count(*) as key_count 
@@ -176,13 +183,15 @@ ensemble_performance_export = Ensemble_Forecast_Performance %>%
     Set = Set,
     number = number,
     original_bl = min(original_bl),
-    max_forecast_value = max(max_forecast_value),
+    max_forecast_value = min(max_forecast_value),
     current_val = current_val,
     classification = min(Classification),
     custom_sort = min(custom_sort),
-    accuracy_metric = round(abs((max_forecast_value - current_val)/max_forecast_value),2)) %>%
+    accuracy_metric = round(abs((max_forecast_value - current_val)/max_forecast_value),2),
+    ct = n()) %>%
   ungroup() %>% distinct() %>% #filter(accuracy_metric <= .10) %>%
-  arrange(custom_sort,accuracy_metric)
+  arrange(custom_sort,accuracy_metric) %>%
+  filter(ct >= 2)
 
 # drive_auth(email = "pachun95@gmail.com", use_oob = T)
 # gs4_auth(email = "pachun95@gmail.com", use_oob = T)
@@ -323,7 +332,7 @@ statement <- paste("SELECT DISTINCT a.Key, r.card as Name,r.set as `Set`,r.rarit
 Demand <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1)
 
 statement <- paste("SELECT DISTINCT a.Unique_Keys as Unique_Keys, r.card as Name,r.set as `Set`,r.rarity as Rarity, a.Todays_Sellers,a.Yesterday_Sellers,a.Week_Ago_Sellers,a.Month_Ago_Sellers,a.Yesterday_Sellers_Chg,a.Week_Ago_Sellers_Chg,a.Month_Ago_Sellers_Chg ", 
-                   "FROM `gaeas-cradle.vendor_growth.",gsub("-","_",Sys.Date()),"*` a ",
+                   "FROM `gaeas-cradle.vendor_growth.",currentDate,"*` a ",
                    " LEFT JOIN roster.mtgjson r on r.Key = a.Unique_Keys",
                    sep = "")
 Vendor <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1)
@@ -391,10 +400,10 @@ ORDER BY custom_sort),
 t2 as 
 (SELECT Key, BL as current_val  
 FROM `gaeas-cradle.ck_funny_money.*` a  
-WHERE Date = CURRENT_DATE() AND 
+WHERE Date = CURRENT_DATE()-1 AND 
  _TABLE_SUFFIX BETWEEN 
-  FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 0 DAY)) AND 
-  FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL -1 DAY)) 
+  FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)) AND 
+  FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL 0 DAY)) 
 ), 
 t3 as ( 
 SELECT t1.Key, count(*) as key_count 
@@ -424,13 +433,15 @@ ensemble_performance_export = Ensemble_Forecast_Performance %>%
         Set = Set,
         number = number,
         original_bl = min(original_bl),
-        max_forecast_value = max(max_forecast_value),
+        max_forecast_value = min(max_forecast_value),
         current_val = current_val,
         classification = min(Classification),
         custom_sort = min(custom_sort),
-        accuracy_metric = round(abs((max_forecast_value - current_val)/max_forecast_value),2)) %>%
+        accuracy_metric = round(abs((max_forecast_value - current_val)/max_forecast_value),2),
+        ct = n()) %>%
     ungroup() %>% distinct() %>% #filter(accuracy_metric <= .10) %>%
-    arrange(custom_sort,accuracy_metric)
+    arrange(custom_sort,accuracy_metric) %>% 
+  filter(ct >= 2)
 
 
 #Ensemble_Forecast_upload %>% view()
@@ -654,7 +665,7 @@ g = ggplot(data = ensemble_table_b %>% filter(classification != "F" & classifica
         axis.text.x = element_text(size=10, face="bold"),
         axis.text.y = element_text(size=10, face="bold")) 
 
-#g 
+g 
 
 setwd("/home/cujo253/pics")
 ggsave(plot = g, width = 20, height = 9, dpi = 800, filename = "ensemble.png")

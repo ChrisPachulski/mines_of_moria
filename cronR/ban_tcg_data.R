@@ -135,109 +135,23 @@ mtgjson_roster_update = function() {
     return(Entire_Dictionary)
 }
 ban_data_retrieval = function(){
+  con = gaeas_cradle("wolfoftinstreet@gmail.com")
   
-  BAN_data = GET("https://www.mtgban.com/api/mtgban/all.json?id=mtgjson&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjUzNDAxMzEzJlNpZ25hdHVyZT1kbjRUSWd2Q3hTWEpCZmtYS0JpRGNhRmNpZXMlM0QmVXNlckVtYWlsPXdvbGYlNDBtdGdiYW4uY29t",content_type_json()) %>% 
-    content("parsed")
-  
-  full_item_tbl = NULL
-  for(aa in 1:length(BAN_data$buylist %>% names())){
-    for(bbb in 1:length(BAN_data$buylist[[aa]] %>% names())){ 
-      for(cccc in 1:length(BAN_data$buylist[[aa]] %>% .[[bbb]] %>% names())){
-        
-        uuid = BAN_data$buylist %>% .[aa] %>% names()
-        vendor = BAN_data$buylist[[aa]] %>% .[bbb] %>% names()
-        type = BAN_data$buylist[[aa]] %>% .[[bbb]] %>% names()
-        value = BAN_data$buylist[[aa]] %>% .[[bbb]] %>% .[[cccc]]
-        
-        line_item = cbind(vendor,uuid,type,value)
-        
-        full_item_tbl = rbind(full_item_tbl,line_item)
-      }
-    }
-  }
+  currentDate <- gsub("-","_",Sys.Date()-1)
   
   
-  buylist_master_tbl = full_item_tbl %>% as_tibble() %>%
-    mutate(value = as.numeric(value))  %>% 
-    mutate(id = ifelse(grepl("^ABU$",vendor),1,
-                       ifelse(grepl("^CK$",vendor),2,
-                              ifelse(grepl("^CSI$",vendor),3,
-                                     ifelse(grepl("^MS$",vendor),4,
-                                            ifelse(grepl("^SCG$",vendor),5,
-                                                   ifelse(grepl("^TAT$",vendor),6,
-                                                          ifelse(grepl("^TCGMkt$",vendor),7,
-                                                                 ifelse(grepl("^95$",vendor),8,
-                                                                        ifelse(grepl("^CS$",vendor),9,
-                                                                               ifelse(grepl("^MMTG$",vendor),10,
-                                                                                      ifelse(grepl("^SZ$",vendor),11,
-                                                                                             ifelse(grepl("^HA$",vendor),12,
-                                                                                                    ifelse(grepl("^BP$",vendor),13,0))))))))))))) ) %>%
-    
-    mutate_if(is.character,as.factor) %>%
-    mutate(description = ifelse(id == 1, "ABU Buylist",
-                                ifelse(id == 2, "Card Kingdom Buylist",
-                                       ifelse(id == 3, "Cool Stuff Inc Buylist",
-                                              ifelse(id == 4, "MTG Seattle Buylist",
-                                                     ifelse(id == 5, "Star City Games Buylist",
-                                                            ifelse(id == 6, "Troll & Toad Buylist",
-                                                                   ifelse(id == 7, "TCG Buylist",
-                                                                          ifelse(id == 8, "95 Buylist",
-                                                                                 ifelse(id == 9, "Cardsphere Offers",
-                                                                                        ifelse(id == 10, "Mythic MTG Buylist",
-                                                                                               ifelse(id == 11, "Strikezone Buylist",
-                                                                                                      ifelse(id == 12, "Hareruya Buylist",
-                                                                                                             ifelse(id == 13, "Blue Print Bulk Buylist",""
-                                                                                                             )))))))))))))) %>%
-    rename(hasFoil=type) %>%
-    mutate(hasFoil = ifelse(hasFoil == "foil",1,ifelse(hasFoil == "etched",2,0)),
-           Date = ymd(Sys.Date())) %>%
-    select(Date,everything())
+  statement <- paste("SELECT * ","FROM `gaeas-cradle..roster.ban_buylist_id` a ",sep = "")
+  buylist_vendor_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) 
   
-  buylist_vendor_tbl = buylist_master_tbl %>% select(id,vendor,description)  %>% distinct() %>% arrange(id)
+  statement <-  paste("SELECT * ","FROM `gaeas-cradle..roster.ban_retail_id` a ",sep = "")
+  retail_vendor_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) 
   
   
-  full_item_tbl = NULL
-  for(aa in 1:length(BAN_data$retail %>% names())){
-    for(bbb in 1:length(BAN_data$retail[[aa]] %>% names())){ 
-      for(cccc in 1:length(BAN_data$retail[[aa]] %>% .[[bbb]] %>% names())){
-        
-        uuid = BAN_data$retail %>% .[aa] %>% names()
-        vendor = BAN_data$retail[[aa]] %>% .[bbb] %>% names()
-        type = BAN_data$retail[[aa]] %>% .[[bbb]] %>% names()
-        value = BAN_data$retail[[aa]] %>% .[[bbb]] %>% .[[cccc]]
-        
-        line_item = cbind(vendor,uuid,type,value)
-        
-        full_item_tbl = rbind(full_item_tbl,line_item)
-      }
-    }
-  }
+  statement <- paste("SELECT * ","FROM `gaeas-cradle.ban_retail.",currentDate,"*` a ",sep = "")
+  retail_master_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) 
   
-  retail_master_tbl = full_item_tbl %>% as_tibble() %>%
-    mutate(value = as.numeric(value))  %>% 
-    mutate(id = ifelse(grepl("^CK$",vendor),1,
-                       ifelse(grepl("^CT$",vendor),2,
-                              ifelse(grepl("^MKM Low$",vendor),3,
-                                     ifelse(grepl("^MKM Trend$",vendor),4,
-                                            ifelse(grepl("^SCG$",vendor),5,
-                                                   ifelse(grepl("^TAT$",vendor),6,
-                                                          ifelse(grepl("^TCG Direct Low$",vendor),7,
-                                                                 ifelse(grepl("^TCG Low$",vendor),8,
-                                                                        ifelse(grepl("^TCG Market$",vendor),9,
-                                                                               ifelse(grepl("^TCG Player$",vendor),10,
-                                                                                      ifelse(grepl("^95$",vendor),11,
-                                                                                             ifelse(grepl("^ABU$",vendor),12,
-                                                                                                    ifelse(grepl("^MMTG$",vendor),13,
-                                                                                                           ifelse(grepl("^AMZ$",vendor),14,
-                                                                                                                  ifelse(grepl("^CSI$",vendor),15,
-                                                                                                                         ifelse(grepl("^MS$",vendor),16,
-                                                                                                                                ifelse(grepl("^SZ$",vendor),17,0))))))))))))))))) ) %>%
-    rename(hasFoil=type) %>%
-    mutate(hasFoil = ifelse(hasFoil == "foil",1,ifelse(hasFoil == "etched",2,0)),
-           Date = ymd(Sys.Date())) %>%
-    select(Date,everything())
-  
-  retail_vendor_tbl = retail_master_tbl %>% select(id,vendor) %>% distinct() %>% arrange(id)
+  statement <- paste("SELECT * ","FROM `gaeas-cradle.ban_buylist.",currentDate,"*` a ",sep = "")
+  buylist_master_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) 
   
   ban_data = list(retail_vendor_tbl,buylist_vendor_tbl,retail_master_tbl, buylist_master_tbl)
   return(ban_data)
@@ -564,45 +478,45 @@ invisible(chrome <-function(ip){
 })
 all_tcg_card_info = function(ip){
     remDr <- chrome(ip)
-    remDr$navigate("https://www.tcgplayer.com/search/magic/product?productLineName=magic&page=1")
+    remDr$navigate("https://www.tcgplayer.com/search/magic/product?productLineName=magic")
     Sys.sleep(4)
-    remDr$findElement('xpath','//*[@id="app"]/div/section[2]/div/div[1]/button')$clickElement()
+    try({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/div/div[1]/button')$clickElement()})
     Sys.sleep(4)
     
     tryCatch({remDr$findElement('xpath','/html/body/div[5]/div/div/div/div/button/span')$clickElement()}, 
              error = function(e){print("No msg box popped up")
              })
     Sys.sleep(2)
-    tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
-             error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
-             })
+    tryCatch({
+      tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
+               error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
+               })}, 
+      error = function(e){print("No Drop Down")})
     Sys.sleep(2)
     
     # webElem <- remDr$findElements("css", "iframe")
     # remDr$switchToFrame(webElem[[1]])
     stacked_text <- NULL
     stacked_qty <- NULL
-    numbers <- remDr$findElements('css','.search-filter__option-count')
+    page_source = remDr$getPageSource()
+    stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes(".checkbox__option-value") %>% html_text() %>% trimws()
+    stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric()
     Sys.sleep(4)
-    for(i in 1:length(numbers)){
-        text <- numbers[[i]]$getElementText()
-        stacked_qty <- rbind(stacked_qty,text)}
-    Sys.sleep(4)
-    options <- remDr$findElements('css','.checkbox__option-value')
-    for(i in 1:length(options)){
-        text <- options[[i]]$getElementText()
-        stacked_text <- rbind(stacked_text,text)}
     
     stacked_text <- cbind(stacked_text,stacked_qty)
     stacked_backup <- stacked_text
     #stacked_text <- stacked_backup
+    stacked_text <- stacked_text %>% as_tibble() %>% mutate(stacked_qty = as.numeric(stacked_qty))%>% 
+      slice(which.max(stacked_text == "Prerelease Cards") : n()) %>% 
+      mutate(case = ifelse(stacked_text == "Cards",1,NA)) %>%
+      fill(.,case,.direction = c("down")) %>% 
+      filter(is.na(case)) %>%
+      select(-case) %>%
+      rename("editions"="stacked_text", "qty"="stacked_qty") %>%
+      mutate(editions = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions)))))))
     
-    stacked_text <- stacked_text %>% as.data.frame() %>% dplyr::slice(-c(1:45))
-    rownames(stacked_text) <- seq(nrow(stacked_text))
-    cutoff <- which(grepl("^Cards$",stacked_text$V1))
-    stacked_text <- tryCatch({stacked_text %>% unnest(cols = c(V1,V2)) %>% dplyr::slice(-c(cutoff:nrow(stacked_text)),) %>% rename(c("V1" = "editions", "V2" = "qty"))},error = function(e){stacked_text %>% unnest(cols = c(V1,V2)) %>% dplyr::slice(-c(cutoff:nrow(stacked_text)),) %>% rename(c("editions" = "V1", "qty" = "V2"))}) %>% 
-        mutate(editions  = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions))))))) %>% mutate(qty = as.numeric(qty))
     stacked_text = stacked_text %>% na.omit()
+    
     groupings <- NULL
     groupings <- as.numeric(stacked_text$qty[1])
     groupings <- rbind(groupings,(stacked_text$qty[1] + stacked_text$qty[2]))
@@ -811,19 +725,41 @@ all_tcg_card_info = function(ip){
 }
 ck_best_sellers = function(){
   
+  gc()
   Limit <- data.frame(raw_elements = read_html("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=1") %>% html_nodes("a") %>% html_attr("href")) %>%  filter(grepl("page=",raw_elements)) %>%as.data.frame() %>% dplyr::slice(4:20) %>% lapply(as.character) %>% as.data.frame() %>% mutate(pages = parse_number(str_sub(raw_elements,-5,-1))) %>% mutate(pages = as.numeric(pages)) %>% as.data.frame() %>% select(pages) %>% max()    
-
+  #cl <- makeCluster(2, type = "FORK")
+  
+  #registerDoParallel(cl)
+  Sys.sleep(3)
+  Start_Time <- Sys.time()
   CK_Prices_df <- NULL
   for(i in 1:Limit){
-    CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
-    Card <- content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text()
-    Set <- gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) 
-    Rarity <- gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))
-    Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
-    key <- paste(Card, Set, Rarity,sep="")
-    Results <- data.frame(key,Card,Set,Rarity,Price,i)
-    CK_Prices_df <- rbind(CK_Prices_df,Results)
+    tryCatch({
+      tryCatch({
+        CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
+        Card <- content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text()
+        Set <- gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) 
+        Rarity <- gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))
+        Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
+        key <- paste(Card, Set, Rarity,sep="")
+        Results <- data.frame(key,Card,Set,Rarity,Price,i)
+        CK_Prices_df <- rbind(CK_Prices_df,Results)
+        Sys.sleep(.9)}, error = function(e){
+          Sys.sleep(120)
+          CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
+          Card <- content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text()
+          Set <- gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) 
+          Rarity <- gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))
+          Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
+          key <- paste(Card, Set, Rarity,sep="")
+          Results <- data.frame(key,Card,Set,Rarity,Price,i)
+          CK_Prices_df <- rbind(CK_Prices_df,Results)
+          Sys.sleep(.9)
+        })}, error = function(e){
+          next}
+    )
   }
+  
   
   CK_Smaller_List <- fromJSON("https://api.cardkingdom.com/api/pricelist")                                                       %>% 
     as.data.frame() %>% 
@@ -915,10 +851,11 @@ con <- gaeas_cradle("wolfoftinstreet@gmail.com")
 
 mtgjson_roster = mtgjson_roster_update()
 
-ban_data = ban_data_retrieval(id="mtgjson")
+ban_data = ban_data_retrieval()
 
-tcg_low_nm_retail = ban_data[[3]] %>% filter(vendor == 10) %>% 
+tcg_low_nm_retail = ban_data[[3]] %>% filter(id == 10) %>% 
   left_join(mtgjson_roster %>% select(uuid,tcg_ID),by=c("uuid"="uuid")) %>% distinct() %>%
+  rename(retail = value) %>%
   select(Date,tcg_ID,hasFoil,retail,vendor)
 
 tcg_best_sellers_tbl = tcg_best_sellers()

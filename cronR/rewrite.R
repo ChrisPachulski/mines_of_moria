@@ -291,11 +291,17 @@ print("BQ Premium Upload Successful!")
 
 
 #CK Buylist####
-#Call full buylist via "Raw_CK_Buylist" data frame
-#Call functional (/slimmed) buylist via "CK_Buylist_Retrieved" data frame
-Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+options(httr_oob_default=TRUE) 
+options(gargle_oauth_email = "pachun95@gmail.com")
+drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+gc()
+#drive_create("TCG_Review")
+ss <- drive_get("Sets")
+
+Sets <- read_sheet(ss,"Sets") %>% mutate_if(is.character,as.factor)
 #View(Sets)
-ck_conversion <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
+ck_conversion <- read_sheet(ss,"mtgjson_ck_sets")
 
 tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
@@ -309,7 +315,8 @@ Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>
                                                                                         Key = trimws(paste(name,Set,Rarity," ",Foil,sep="")),
                                                                                         Semi = paste(name,Set,sep="")) 
 
-CK_Smaller_List <-base                                                                                               %>%
+CK_Smaller_List <-fromJSON("https://api.cardkingdom.com/api/pricelist")                                                       %>% 
+  as.data.frame()                                                                                                %>%
   mutate(data.edition = ifelse(data.edition == "Promotional",data.variation,data.edition))                       %>%
   mutate(data.edition = ifelse(grepl("The List",data.edition),gsub("\\/The List","",data.edition),data.edition)) %>%
   mutate(data.edition = ck_conversion$Standardized[match(data.edition,ck_conversion$CK)])                        %>%
@@ -340,13 +347,15 @@ sets = Sets %>% select(sets) %>% filter(sets != "" & sets != "BOOSTER" & sets !=
                                         sets != "PRM-GWP" & sets != "PRM-HRO" & sets != "3ED" & sets != "PRM-JSS" & sets != "PRM-REL" &
                                           sets != "PRM-SDCC18" & sets != "PRM-SDCC19" & sets != "P2XM" & sets != "STX" & sets != "STA"
                                         & sets != "C21"& sets != "C22"& sets != "C23"& sets != "MH2"& sets != "RMH1"& sets != "AFR" & 
-                                          sets != "MID"& sets != "VOW") #%>% as.list()
+                                          sets != "MID"& sets != "VOW" & sets!="KHC" & sets!="AFC"  & sets!="VOC"  & sets!="NEO" & 
+                                          sets!="NEC"  & sets!="DBL"  & sets!="CC2") %>% mutate(sets = as.character(sets))
 total <- nrow(sets)
+
 
 Gold_Market <-NULL #Create null value - note each scrape is given it's own unique null value so that we have each scrapes original source material to prevent excessive scrapping
 setwd("/home/cujo253")
 for(i in 1:total){
-  url <- paste("https://www.mtggoldfish.com/index/",sets[i,],"#paper",sep="")
+  url <- paste("https://www.mtggoldfish.com/index/",as.character(sets[i,]),"#paper",sep="")
   #dld_url <- download.file(url, destfile = "scrapedpage.html", quiet=TRUE)
   Gold <- url %>% read_html()%>%html_nodes("table") %>% .[2] %>% html_table(fill = TRUE) %>% as.data.frame() 
   Gold_Market <- rbind(Gold_Market,Gold)
@@ -358,13 +367,14 @@ Back_Up_Gold <- Gold_Market
 sets_Foil = Sets %>% select(sets_Foil) %>% filter(sets_Foil != "" & sets_Foil != "DST_F" & sets_Foil != "OGW_F" & sets_Foil != "VI_F" &
                                                     sets_Foil != "MB1_F" & sets_Foil != "UGL_F" & sets_Foil != "KHM_F" & sets_Foil != "STX_F"  & 
                                                     sets_Foil != "STA_F" & sets_Foil != "C21_F" & sets_Foil != "MH2_F" & sets_Foil != "RMH1_F" & 
-                                                    sets_Foil != "AFR_F" & sets_Foil != "MID_F"& sets_Foil != "VOW_F") #%>% as.list() %>% as.character()
+                                                    sets_Foil != "AFR_F" & sets_Foil != "MID_F"& sets_Foil != "VOW_F") %>% mutate(sets_Foil = as.character(sets_Foil))
 total <- nrow(sets_Foil)
+
 
 Gold_Foil_Market <-NULL #Create null value - note each scrape is given it's own unique null value so that we have each scrapes original source material to prevent excessive scrapping
 
 for(i in 1:total){
-  url <- paste("https://www.mtggoldfish.com/index/",sets_Foil[i,],"#paper",sep="")
+  url <- paste("https://www.mtggoldfish.com/index/",as.character(sets_Foil[i,]),"#paper",sep="")
   #dld_url <- download.file(url, destfile = "scrapedpage.html", quiet=TRUE)
   Shiny_Gold <- url %>% read_html()%>%html_nodes("table") %>% .[2] %>% html_table(fill = TRUE) %>% as.data.frame()
   Gold_Foil_Market <- rbind(Gold_Foil_Market,Shiny_Gold)
@@ -373,6 +383,7 @@ for(i in 1:total){
 
 End_Time <- Sys.time()
 Foil_Market <- Gold_Foil_Market
+
 
 Gold_Market <- Gold_Market %>% select(Daily, Card, Set,Price) %>% mutate(Price = suppressWarnings(round(as.numeric(Price) * .845,2))) %>% mutate(Daily = paste(Card,Set, sep=""))
 Foil_Market <- Foil_Market %>% select(Daily, Card, Set,Price) %>% mutate(Price = suppressWarnings(round(as.numeric(Price) * .845,2))) %>% mutate(Daily = paste(Card,Set, sep=""))
@@ -396,7 +407,7 @@ Basic_Market_Review <- CK_Smaller_List %>%
 #library(foreach)
 #library(doParallel)
 gc()
-Limit <- data.frame(raw_elements = read_html("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=1") %>% html_nodes("a") %>% html_attr("href")) %>%  filter(grepl("page=",raw_elements)) %>%as.data.frame() %>% dplyr::slice(4:20) %>% lapply(as.character) %>% as.data.frame() %>% mutate(pages = parse_number(str_sub(raw_elements,-5,-1))) %>% mutate(pages = as.numeric(pages)) %>% as.data.frame() %>% select(pages) %>% max()    
+Limit <- data.frame(raw_elements = read_html("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=1") %>% html_nodes("a") %>% html_attr("href")) %>%  filter(grepl("page=",raw_elements)) %>%as.data.frame() %>% lapply(as.character) %>% as.data.frame() %>% mutate(pages = parse_number(str_sub(raw_elements,-5,-1))) %>% mutate(pages = as.numeric(pages)) %>% as.data.frame() %>% select(pages) %>% max()    
 #cl <- makeCluster(2, type = "FORK")
 
 #registerDoParallel(cl)
@@ -1396,7 +1407,7 @@ CK_Price_Comparison <- CK_Prices_df %>% mutate(key = trimws(key)) %>% mutate(TCG
 
 Funny_Money_Analysis <- CK_Price_Comparison %>% #filter(Group != "Exclude") %>% 
   mutate(TCG_Rank = Final_Export$TCG_Rank[match(Key,Final_Export$Key)]) %>%
-  mutate(CK_Rank = Final_Export$CK_ADJ_Rank[match(Key,Final_Export$Key)]) %>% replace_na(list(BL = ""))%>% filter(TCG_MKT != 1 & BL != "") %>%
+  mutate(CK_Rank = Final_Export$CK_ADJ_Rank[match(Key,Final_Export$Key)]) %>% replace_na(list(BL = 0))%>% filter(TCG_MKT != 1 & BL != "") %>%
   arrange(desc(`TCG_MKT_%`)) %>% select(-Group)
 
 FM <- Funny_Money_Analysis[c(1:15)]
@@ -1558,7 +1569,14 @@ Vendor_Growth <- Unique_Keys %>% mutate(Product_ID = Updated_Tracking_Keys$param
   mutate(Yesterday_Sellers = as.numeric(as.character(Yesterday_Vendor$Vendors[match(Product_ID,Yesterday_Vendor$Product_ID)]))) %>%
   mutate(Week_Ago_Sellers = as.numeric(as.character(Week_Ago_Vendor$Vendors[match(Product_ID,Week_Ago_Vendor$Product_ID)]))) %>%
   mutate(Month_Ago_Sellers =as.numeric(as.character(Month_Ago_Vendor$Vendors[match(Product_ID,Month_Ago_Vendor$Product_ID)]))) %>%
-  filter(is.na(Product_ID) != T) %>% filter(Rarity != "C") %>% replace_na(list(Foil = ""))%>%filter(Foil == "") %>%
+  replace(. == 0,NA) %>%
+  #Add in Fill Logic
+  mutate(Month_Ago_Sellers = ifelse( (is.na(Month_Ago_Sellers)) & (!is.na(Week_Ago_Sellers)), Week_Ago_Sellers,Month_Ago_Sellers ) ) %>%
+  mutate(Week_Ago_Sellers = ifelse( (is.na(Week_Ago_Sellers)) & (!is.na(Yesterday_Sellers)), Yesterday_Sellers,Week_Ago_Sellers ) ) %>%
+  mutate(Yesterday_Sellers = ifelse( (is.na(Yesterday_Sellers)) & (!is.na(Week_Ago_Sellers)), Week_Ago_Sellers,Yesterday_Sellers ) ) %>%
+  mutate(Todays_Sellers = ifelse( (is.na(Todays_Sellers)) & (!is.na(Yesterday_Sellers)), Yesterday_Sellers,Todays_Sellers ) ) %>%
+  #
+  filter(is.na(Product_ID) != T)  %>% replace_na(list(Foil = ""))%>%filter(Foil == "") %>%
   mutate(Yesterday_Sellers_Chg = round((Todays_Sellers - Yesterday_Sellers)/Yesterday_Sellers,4)*(-1)) %>%
   mutate(Week_Ago_Sellers_Chg = round((Todays_Sellers - Week_Ago_Sellers)/Week_Ago_Sellers,4)*(-1)) %>%
   mutate(Month_Ago_Sellers_Chg = round((Todays_Sellers - Month_Ago_Sellers)/Month_Ago_Sellers,4)*(-1)) %>%
@@ -1578,7 +1596,7 @@ TCG_Growth <- Unique_Keys %>%mutate(Todays_TCG = as.numeric(today_final_export$T
   mutate(Week_Ago_TCG_Chg = round((Todays_TCG - Week_Ago_TCG)/Week_Ago_TCG,4)*(-1)) %>%
   mutate(Month_Ago_TCG_Chg = round((Todays_TCG - Month_Ago_TCG)/Month_Ago_TCG,4)*(-1)) %>%
   mutate(BuyList_Backing = Funny_Money_Analysis$CK_MKT[match(Key, Funny_Money_Analysis$Key)]) %>%
-  filter(Rarity != "C") %>%
+  #filter(Rarity != "C") %>%
   filter_at(vars(Todays_TCG,Yesterday_TCG,Week_Ago_TCG,Month_Ago_TCG), any_vars(!is.na(.)))
 
 Consistent_Sellers <- TCG_Growth %>% arrange(desc(Yesterday_TCG_Chg))

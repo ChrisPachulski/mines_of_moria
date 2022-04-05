@@ -1,4 +1,4 @@
-pacman::p_load(tidyverse,lubridate,anytime,hms,ggrepel,stringi,ggplot2)
+pacman::p_load(tidyverse,lubridate,anytime,hms,ggrepel,stringi,ggplot2,textclean)
 setwd("/home/cujo253/mines_of_moria/ban_logs/logs/")
 options(scipen=999)
 clean_server_data = function(server_data){
@@ -40,7 +40,7 @@ tool_unique_card_search = function(server_data){
         select(-Attachments,-Reactions) %>%
         filter(Date >= "2021-02-01") %>%
         filter(grepl("\\/search( by )*",user)==F) %>%
-        mutate(user = lower(user))
+        mutate(user = tolower(user))
     
     return(unique_searches)
 }
@@ -57,14 +57,14 @@ card_search_group_users_by = function(server_data,column_by){
     value = tryCatch({
         column_by = enquo(column_by)
         server_data %>% 
-            mutate(month = month(Date)) %>%
+            mutate(month = floor_date(Date,"month")) %>%
             group_by(user,!!column_by) %>%
             summarize(cards_searched = n()) %>%
             ungroup() %>% 
             arrange(desc(cards_searched),desc(!!column_by)) },
         error = function(e){
             server_data %>% 
-                mutate(month = month(Date)) %>%
+                mutate(month = floor_date(Date,"month")) %>%
                 group_by(user) %>%
                 summarize(cards_searched = n()) %>%
                 ungroup() %>% 
@@ -82,9 +82,11 @@ clean_discord_only = function(){
         server_data = rbind(server_data,
                             list.files(pattern = "*.csv")[i] %>% 
                                 map_df(~read_csv(.)) %>% 
-                                mutate(category = gsub(" -.*","",gsub("(BAN Arbitrage Network - )","",list.files(pattern = "*.csv")[i] %>% deparse(substitute(.))))) %>%
+                                mutate(category = gsub("BAN - \\(*[a-zA-Z]+\\)*\\s*\\(*[a-zA-Z]+\\)*\\s*\\(*[a-zA-Z]+\\)*\\s*\\(*[a-zA-Z]+\\)* -\\s*[^\x01-\x7F]*","",gsub("\\s\\[.*","",list.files(pattern = "*.csv")[i] %>% deparse(substitute(.))))) %>%
                                 mutate(channel = gsub("[^\x01-\x7F]", "",gsub("(BAN.*-.*-\\s|\\s\\[.*)","",list.files(pattern = "*.csv")[i] %>% deparse(substitute(.))))) )
     }
+    
+    
     
     cleanse = server_data %>% 
         separate(Date, c("Date","Time","PM"),sep = " ") %>% 
@@ -113,7 +115,7 @@ base_server_data = clean_server_data(server_data)
 
 card_searches = tool_unique_card_search(base_server_data)
 
-card_search_group_users_by(card_searches,month) 
+card_search_group_users_by(card_searches,year) 
 card_search_group_users_by(card_searches,domain) 
 
 card_search_group_users_by(card_searches) 
@@ -127,6 +129,19 @@ users_per_month = card_search_group_users_by(card_searches,month)  %>%
     ungroup()
 
 
+card_searches %>%
+    filter(Date >= '2022-01-01') %>%
+    mutate(user = gsub("\\s*\\(.*","",user)) %>%
+    mutate(domain = gsub("\\s*\\(.*","",domain)) %>%
+    group_by(user,domain) %>%
+    summarize(site_queries = n()) %>%
+    ungroup() %>%
+    arrange(desc(site_queries)) %>%
+    mutate(identity = ifelse(grepl("(starcitygames|coolstuffinc)",domain),"Vendor","Individual User")) %>%
+    #select(-user,-domain) %>%
+    head(25) %>% 
+    view()
+    
 
 
 # Discord Only ------------------------------------------------------------
@@ -134,7 +149,10 @@ users_per_month = card_search_group_users_by(card_searches,month)  %>%
 
 discord_review = clean_discord_only()
 
+#discord_review %>%select(category) %>% distinct() %>% view()
+
 category_posts = discord_review %>% 
+    filter(channel != "server-dump") %>%
     group_by(category) %>%
     summarize(total_posts = n()) %>%
     ungroup() %>%
@@ -151,12 +169,27 @@ channel_posts = discord_review %>%
 
 # Magic Discord Only ------------------------------------------------------
 for(q in 1:length(unique(discord_review$category))){
-
+   
     category_selection = tolower(unique(discord_review$category)[q])
     
     if(grepl("not public",category_selection)){next}
+    if(grepl("evolution",category_selection)){next}
+    if(grepl("rules$",category_selection)){next}
+    if(grepl("pronouns$",category_selection)){next}
+    if(grepl("server-dump",category_selection)){next}
+    
+    if(grepl("regional",category_selection)){next}
+    if(grepl("affiliate",category_selection)){next}
+    if(grepl("areas-of-interest",category_selection)){next}
+    
+    
+    
+    if(grepl("vent-old",category_selection)){next}
+    
     
     ovr_category_view = discord_review %>%
+        filter(channel != "server-dump") %>%
+        filter(channel != "server-notifs") %>%
         filter(grepl(category_selection,tolower(category) ))  %>%
         mutate(Date = floor_date(Date,"month")) %>%
         filter(Date != max(Date)) %>%
@@ -177,25 +210,30 @@ for(q in 1:length(unique(discord_review$category))){
         }
         if(i == 2){
         max_point_2 = ovr_category_view %>%
-            filter(channel == ovr_category_view$channel[i]) %>%
+            filter(channel == ovr_category_view$channel[i])%>%
+            filter(total_posts != max(total_posts)) %>%
             filter(total_posts == max(total_posts))}
         
         if(i == 3){
         max_point_3 = ovr_category_view %>%
             filter(channel == ovr_category_view$channel[i]) %>%
+            filter(total_posts != max(total_posts)) %>%
+            filter(total_posts != max(total_posts)) %>%
             filter(total_posts == max(total_posts))
-        }
         
         max_point = rbind(max_point_1,max_point_2,max_point_3)
+        }
+        
+        
     }
     print(ggplot(ovr_category_view, aes(x = Date, y = total_posts, color = channel, label = total_posts)) +
         geom_line() +
-        scale_x_date(date_labels="%m",date_breaks  ="1 month") +
+        scale_x_date(date_labels="%Y-%m",date_breaks  ="1 month") +
         geom_point(data = latest_values, aes(x = Date, y = total_posts), shape = 21, fill = "white", size = 2, stroke = 1.7) +
         geom_text_repel(data = latest_values, aes(x = Date, y = total_posts, label = total_posts), size = 4, vjust = 1.25, hjust = .5 )+
         geom_point(data = max_point, aes(x = Date, y = total_posts), shape = 21, fill = "white", size = 2, stroke = 1.7) +
         geom_text_repel(data = max_point, aes(x = Date, y = total_posts, label = total_posts), color = "dark green",size = 4, vjust = 1.25, hjust = .75 ) +
-        ggtitle(paste(str_extract(unique(discord_review$category)[q],"[A-Za-z]+")," Channels",sep="")) + ylab("Total Posts") + xlab("Month") +
+        ggtitle(paste(str_extract(unique(discord_review$category)[q],"[A-Za-z]+\\s*[A-Za-z]*\\s*[A-Za-z]*\\s*[A-Za-z]*")," channel",sep="")) + ylab("Total Posts") + xlab("Month") +
         theme(plot.title = element_text(hjust = 0.5)))
 }
 
