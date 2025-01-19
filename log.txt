@@ -22,3 +22,7 @@ No files found.
 Processes found: 1849681
 Killing processes...
 Killed
+No files found.
+Processes found: 1849741
+Killing processes...
+Killed

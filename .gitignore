@@ -3,11 +3,11 @@
 .RData
 .Ruserdata
 .DS_Store
-.log
-.csv
-.ppk
-.png
-.secret
+*.log
+*.csv
+*.ppk
+*.png
+*.secret
 .httr-oauth
-.json
+*.json
 private
