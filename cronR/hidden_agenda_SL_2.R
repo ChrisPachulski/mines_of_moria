@@ -239,7 +239,8 @@ tcg_data_grab = function(){
         if(c == 0){next}
         #
         for(d in 1:c ){
-            tryCatch({listings_bricks = map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()%>% select(-listedDate)}, error = function(e){listings_bricks = map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()})
+            listings_bricks = tryCatch({map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()%>% select(-soldDate,-listedDate)}, error = function(e){map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()})
+            
             seller_bricks = rbind(seller_bricks,listings_bricks) %>% as_tibble()}
         
         direct = seller_bricks %>% filter(directSeller == TRUE) %>% 
@@ -537,7 +538,7 @@ tcg_data_grab = function(){
 }
 
 ban_set_api_bl=function(edition){
-    BAN_SL_data = GET(paste0("https://www.mtgban.com/api/mtgban/buylist/",edition,".json?id=tcg&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjUzNDAxMzEzJlNpZ25hdHVyZT1kbjRUSWd2Q3hTWEpCZmtYS0JpRGNhRmNpZXMlM0QmVXNlckVtYWlsPXdvbGYlNDBtdGdiYW4uY29t"),content_type_json()) %>% 
+    BAN_SL_data = GET(paste0("https://www.mtgban.com/api/mtgban/buylist/",edition,".json?id=tcg&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjY1NjEzODA2JlNpZ25hdHVyZT04NVljMHhORUdXaXduQVNVSDUwQ0NUSE1ZR1UlM0QmVXNlckVtYWlsPUtxJTJCWUslNURHcnN%2BaDNxRTQ%3D"),content_type_json()) %>% 
         content("parsed")
     
     full_item_tbl = NULL
@@ -600,7 +601,7 @@ ban_set_api_bl=function(edition){
     return(buylist_master_tbl)
 }
 ban_set_api_mkt=function(edition){
-    BAN_data = GET(paste0("https://www.mtgban.com/api/mtgban/retail/",edition,".json?id=tcg&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjUzNDAxMzEzJlNpZ25hdHVyZT1kbjRUSWd2Q3hTWEpCZmtYS0JpRGNhRmNpZXMlM0QmVXNlckVtYWlsPXdvbGYlNDBtdGdiYW4uY29t"),content_type_json()) %>% 
+    BAN_data = GET(paste0("https://www.mtgban.com/api/mtgban/retail/",edition,".json?id=tcg&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjY1NjEzODA2JlNpZ25hdHVyZT04NVljMHhORUdXaXduQVNVSDUwQ0NUSE1ZR1UlM0QmVXNlckVtYWlsPUtxJTJCWUslNURHcnN%2BaDNxRTQ%3D"),content_type_json()) %>% 
         content("parsed")
     
     full_item_tbl = NULL
@@ -669,7 +670,6 @@ naming_tbl = all_values[[2]] %>%
     distinct()
 
 
-final_tbl %>% view()
 
 final_tbl = naming_tbl                          %>%
     left_join(all_values[[1]]                   %>% 
@@ -704,7 +704,8 @@ final_tbl = naming_tbl                          %>%
     select(-contains("d_"),
            -max_single_qty)                   %>%
     mutate(across(where(is.numeric), round, 2)) %>%
-    filter(condition == "NM" | condition == "")
+    filter(condition == "NM" | condition == "") %>%
+    filter(mkt_low >0) 
 
 
 ban_sl_bl_data = ban_set_api_bl("sld") %>% 
@@ -753,18 +754,17 @@ options(gargle_oauth_email = "pachun95@gmail.com")
 drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
 gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
 
-ss <- drive_get("TCGPlayer Pricing Sheet 2020")
+ss <- drive_get("TCGPlayer SL Pricing Sheet")
 
-
-sheet_write(ss=ss,
+sheet_write(ss='1ZzzteWD2mxK1OWKzvNitASlaovNZ0nKepUwOusLJ64Q',
             sheet= "Wolfs_tcg_churn",
             final_tbl)
 
-sheet_write(ss=ss,
+sheet_write(ss='1ZzzteWD2mxK1OWKzvNitASlaovNZ0nKepUwOusLJ64Q',
             sheet= "BAN_api_mkt",
             sl_wider_mkt_tbl)
 
-sheet_write(ss=ss,
+sheet_write(ss='1ZzzteWD2mxK1OWKzvNitASlaovNZ0nKepUwOusLJ64Q',
             sheet= "BAN_api_bl",
             sl_wider_bl_tbl)
 

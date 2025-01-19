@@ -51,31 +51,10 @@ library(pacman)
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery,RSelenium,lubridate,anytime)
 
 
-Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
-#View(Sets)
-ck_conversion <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
-
-# You don't need the roster refresh. I have these in all my scripts to make sure each droplet keeps an updating roster
-# Roster Load in ----------------------------------------------------------
-
-
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS//C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
-    #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
-    rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-    mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
-        rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
-        #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-        mutate(Semi = paste(name, Set,sep=""))})
-
-Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>%mutate(name = gsub("\\s\\/\\/.*","",name),
-                                                                                        Key = trimws(paste(name,Set,Rarity," ",Foil,sep="")),
-                                                                                        Semi = paste(name,Set,sep="")) 
-
-
 # TCG ID Retrievals -------------------------------------------------------
 
 # This snippet will pull every mtg set that TCG has, ensuring as soon as pre-sales begin we capture those sales immediately
-remDr <- chrome("159.203.123.73")
+remDr <- chrome("64.225.20.203")
 remDr$navigate("https://www.tcgplayer.com/search/magic/product?productLineName=pokemon")
 Sys.sleep(4)
 try({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/div/div[1]/button')$clickElement()})
@@ -97,13 +76,14 @@ Sys.sleep(2)
 stacked_text <- NULL
 stacked_qty <- NULL
 page_source = remDr$getPageSource()
-stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes(".checkbox__option-value") %>% html_text() %>% trimws()
-stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric()
+stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes('.tcg-input-checkbox') %>% html_text()
+stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric() %>% .[-1]
+
 Sys.sleep(4)
 
 stacked_text <- cbind(stacked_text,stacked_qty)
 stacked_backup <- stacked_text
-#stacked_text <- stacked_backup
+stacked_text <- stacked_backup
 stacked_text <- stacked_text %>% as_tibble() %>% mutate(stacked_qty = as.numeric(stacked_qty))%>% 
     slice(which.max(stacked_text == "League & Championship Cards") : n()) %>% 
     mutate(case = ifelse(stacked_text == "Cards",1,NA)) %>%
@@ -114,7 +94,7 @@ stacked_text <- stacked_text %>% as_tibble() %>% mutate(stacked_qty = as.numeric
     mutate(editions = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions)))))))
 
 stacked_text = stacked_text %>% na.omit() %>% 
-    mutate(api_editions  = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions))))))) %>% mutate(qty = ceiling(as.numeric(qty)/100) ) %>%
+    mutate(api_editions  = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions))))))) %>% mutate(qty = ceiling(as.numeric(qty)/50) ) %>%
     mutate(api_editions = paste('"',api_editions,'"',sep=""))
 length(stacked_text$editions)
 #stacked_text = stacked_text %>% filter(grepl("strixhaven-school",editions))
@@ -140,11 +120,11 @@ for(q in 1:length(stacked_text$editions)){
     tryCatch({
         Sys.sleep(1.5)
         gc()
-        # You know this part
+        # p = 1
         Sys.sleep(2)
         for(p in 1:stacked_text$qty[q]){
             body <- paste('{
-            "algorithm": "salesrel",
+            "algorithm": "sales_exp_fields_experiment",
             "context": {
                   "cart": {},
                   "shippingCountry": "US"
@@ -170,10 +150,10 @@ for(q in 1:length(stacked_text$editions)){
             A <- A + 100
             B <- 100
             C <- 100
-            TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
+            TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body)
             while(TCG_Results$status_code != 200){
                 Sys.sleep(10)
-                TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
+                TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body)
                 print("Stuck on While Loop")
             }
             TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
@@ -410,7 +390,7 @@ suppressMessages(for(i in 1:nrow(tcg_ids_of_interest)) {
                 
                 min_date = basket_line_items %>% select(dop) %>% summarize(dop = min(dop)) %>% .[[1]]
                 
-                days_back = Sys.Date() - 120
+                days_back = Sys.Date() - 23
                 if(min_date == days_back){basket_line_items = basket_line_items%>% filter(dop < days_back)}
                 
                 if(min_date < days_back){basket_line_items = basket_line_items%>% filter(dop > days_back)}
@@ -483,7 +463,8 @@ set_baskets = set_baskets %>%
 distinct_basket_dates = set_baskets  %>% mutate(date = floor_date(dop,"day")) %>% select(date) %>% distinct() %>% arrange(date) %>%
     filter(date != min(date)) %>% 
     filter(date != max(date)) %>% 
-    filter(date != max(date))
+    filter(date != max(date)) %>%
+    distinct()
 
 distinct_basket_dates %>% arrange(desc(date))
 
@@ -519,7 +500,8 @@ for(i in distinct_basket_dates$date){
         left_join(set_rosters, by=c("tcg_id"="tcg_id","version"="isFoil")) %>%
         select(date,tcg_id,Card_name,Set,Rarity,number,version,condition,language,
                cmc,typing,coloring,description,flavor,
-               listing_type,sold_quantity,dop,sell_price,daily_basket_number,basket)
+               listing_type,sold_quantity,dop,sell_price,daily_basket_number,basket) %>%
+        distinct()
     
     
     con <- gaeas_cradle("wolfoftinstreet@gmail.com")

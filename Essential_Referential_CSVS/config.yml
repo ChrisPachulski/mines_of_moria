@@ -1,0 +1,6 @@
+default:
+    client_id:     "1000.2OQUCWBP9Z3GH6U0YE9TU07L25P9TR"
+    client_secret: "e6d61955eee7b01698954fb895f0fecba01bcc2be6"
+    redirect_uri:  "https://mtgban.com/"
+    scopes:        "ZohoSheet.dataAPI.UPDATE,ZohoSheet.dataAPI.READ"
+    code:          "1000.64657538afc99c7ff1f3b01886397fc0.7dc2774123475d22b5b43d944609a547"

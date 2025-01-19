@@ -1,5 +1,5 @@
 #packages & functions####
-install.packages("pacman")
+#install.packages("pacman")
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery)
 invisible(clean_names <- function(.data, unique = FALSE) {
   n <- if (is.data.frame(.data)) colnames(.data) else .data
@@ -92,9 +92,17 @@ Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>
                                                                                         Key = trimws(paste(name,Set,Rarity," ",Foil,sep="")),
                                                                                         Semi = paste(name,Set,sep="")) 
 
-Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+options(gargle_oauth_email = "pachun95@gmail.com")
+drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+gc()
+#drive_create("TCG_Review")
+ss <- drive_get("Sets")
 
-ck_conversion <- read_csv("~/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
+Sets <- read_sheet(ss,"Sets") %>% mutate_if(is.character,as.factor)
+#View(Sets)
+ck_conversion <- read_sheet(ss,"mtgjson_ck_sets")
+
 
 #Exclusion Classification####
 Exclusion <- data.frame(Sets$Set_Excl,Sets$Excl_Excl, stringsAsFactors = TRUE)
@@ -109,7 +117,7 @@ BL_Ratio$BL_Ratio_Ranking <- as.numeric(as.character(BL_Ratio$BL_Ratio_Ranking))
 BL_Ratio$BL_Ratio_Value <- as.numeric(as.character(BL_Ratio$BL_Ratio_Value))
 QTY_Ratio$QTY_Ratio_Ranking <- as.numeric(as.character(QTY_Ratio$QTY_Ratio_Ranking))
 QTY_Ratio$QTY_Ratio_Value <- as.numeric(as.character(QTY_Ratio$QTY_Ratio_Value))
-All_Cards <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv",col_types = cols(Foil = col_character()))
+All_Cards <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv",col_types = cols(hasFoil = col_character()))
 Printings <- All_Cards %>% group_by(card) %>% add_tally()
 
 currentDate <- Sys.Date()

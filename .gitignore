@@ -2,6 +2,12 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
 .log
-
-zed_run/zed_run_massive_history.csv
+.csv
+.ppk
+.png
+.secret
+.httr-oauth
+.json
+private

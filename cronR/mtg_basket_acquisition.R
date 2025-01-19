@@ -47,31 +47,14 @@ retry <- function(expr, isError=function(x) "try-error" %in% class(x), maxErrors
     }
     return(retval)
 }
-library(pacman)
-pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery,RSelenium,lubridate,anytime)
+require(pacman)
+pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,readr,dplyr,gargle,httr,bigrquery,RSelenium,lubridate,anytime)
 
 
-Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
-#View(Sets)
-ck_conversion <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
-
-# You don't need the roster refresh. I have these in all my scripts to make sure each droplet keeps an updating roster
-# Roster Load in ----------------------------------------------------------
-
-
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS//C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
-    #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
-    rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-    mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
-        rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
-        #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-        mutate(Semi = paste(name, Set,sep=""))})
-
-Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>%mutate(name = gsub("\\s\\/\\/.*","",name),
-                                                                                        Key = trimws(paste(name,Set,Rarity," ",Foil,sep="")),
-                                                                                        Semi = paste(name,Set,sep="")) 
-
-
+fs::dir_delete('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_rosters/')
+fs::dir_create('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_rosters/')
+fs::dir_delete('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards/')
+fs::dir_create('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards/')
 # TCG ID Retrievals -------------------------------------------------------
 
 # This snippet will pull every mtg set that TCG has, ensuring as soon as pre-sales begin we capture those sales immediately
@@ -97,9 +80,8 @@ Sys.sleep(2)
 stacked_text <- NULL
 stacked_qty <- NULL
 page_source = remDr$getPageSource()
-stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes(".checkbox__option-value") %>% html_text() %>% trimws()
-stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric()
-Sys.sleep(4)
+stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes('.tcg-input-checkbox') %>% html_text()
+stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric() %>% .[-1]
 
 stacked_text <- cbind(stacked_text,stacked_qty)
 stacked_backup <- stacked_text
@@ -144,7 +126,7 @@ for(q in 1:length(stacked_text$editions)){
         Sys.sleep(2)
         for(p in 1:stacked_text$qty[q]){
             body <- paste('{
-            "algorithm": "salesrel",
+            "algorithm": "sales_exp_fields",
             "context": {
                   "cart": {},
                   "shippingCountry": "US"
@@ -170,10 +152,10 @@ for(q in 1:length(stacked_text$editions)){
             A <- A + 100
             B <- 100
             C <- 100
-            TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
+            TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body)
             while(TCG_Results$status_code != 200){
                 Sys.sleep(10)
-                TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
+                TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body)
                 print("Stuck on While Loop")
             }
             TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
@@ -287,7 +269,7 @@ for(q in 1:length(stacked_text$editions)){
         # Get a list of tcgIds from whatever source you have
         # I adjust to greater than $5 because I act on this information and I'd like to get it in a timely manner, 
         # entirely arbitrary filter
-        tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >= .25) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
+        tcg_ids_of_interest = Best_Sellers_SR %>% as.data.frame() %>% filter(MKT >= .5) %>% select(Product_ID) %>% rename(tcg_id = Product_ID) %>% distinct()
         
         
         tcg_ids = rbind(tcg_ids,tcg_ids_of_interest)
@@ -316,152 +298,151 @@ five_hundred_group = NULL
 
 suppressMessages(for(i in 1:nrow(tcg_ids_of_interest)) {
     tryCatch({
-    all_basket_date_cleanse_tbl = NULL
-    b= 1
-    for(b in 1:length(offsets)){
-        
-        all_sales_for_card = NULL
-        
-        Sys.sleep(.2)
-        
-        body = paste0('{listingType: "All", offset: ',offsets[b],', limit: 25}')
-        
-        
-        recent_sales_raw_list = POST(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales",sep=""),content_type_json(),body=body)
-        
-        test_value = 0
-        
-        code = as.numeric(recent_sales_raw_list$status_code)
-        if(recent_sales_raw_list$status_code == 500){break}
-        if(recent_sales_raw_list$status_code == 403){Sys.sleep(1);next}
-        
-        if(recent_sales_raw_list$status_code == 400){Sys.sleep(.01);break}
-        if(length(recent_sales_raw_list %>% content("parsed") %>% .[[5]])==0){break}
-        
-        if(identical(recent_sales_raw_list %>% content("parsed") %>% .[[5]], list()) ){break}
-        
-        tryCatch({overall_sales_number = recent_sales_raw_list %>% content("parsed") %>% .[[4]]; recent_sales_raw_list = recent_sales_raw_list %>% content("parsed") %>% .[[5]]}, error = function(e){test_value = 1})
-        
-        suppressMessages(gc())
-        if(test_value == 0){
+        all_basket_date_cleanse_tbl = NULL
+        b= 1
+        for(b in 1:length(offsets)){
             
-            loop_limit = recent_sales_raw_list %>% length()
+            all_sales_for_card = NULL
             
-            line_items = NULL
-            if(loop_limit > 0){
-                for(z in 1:loop_limit){
-                    line_item = cbind(
-                        tcg_ids_of_interest$tcg_id[i],
-                        #recent_sales_raw_list[[z]]$skuId,
-                        recent_sales_raw_list[[z]]$variant,
-                        recent_sales_raw_list[[z]]$condition,
-                        recent_sales_raw_list[[z]]$language,
-                        recent_sales_raw_list[[z]]$quantity,
-                        recent_sales_raw_list[[z]]$listingType,
-                        
-                        recent_sales_raw_list[[z]]$orderDate,
-                        recent_sales_raw_list[[z]]$purchasePrice,
-                        recent_sales_raw_list[[z]]$shippingPrice)
-                    line_items = rbind(line_items,line_item)
+            Sys.sleep(.2)
+            
+            body = paste0('{listingType: "All", offset: ',offsets[b],', limit: 25}')
+            
+            
+            recent_sales_raw_list = POST(paste("https://mpapi.tcgplayer.com/v2/product/",tcg_ids_of_interest$tcg_id[i],"/latestsales",sep=""),content_type_json(),body=body)
+            
+            test_value = 0
+            
+            code = as.numeric(recent_sales_raw_list$status_code)
+            if(recent_sales_raw_list$status_code == 500){break}
+            if(recent_sales_raw_list$status_code == 403){Sys.sleep(1);next}
+            
+            if(recent_sales_raw_list$status_code == 400){Sys.sleep(.01);break}
+            if(length(recent_sales_raw_list %>% content("parsed") %>% .[[5]])==0){break}
+            
+            if(identical(recent_sales_raw_list %>% content("parsed") %>% .[[5]], list()) ){break}
+            
+            tryCatch({overall_sales_number = recent_sales_raw_list %>% content("parsed") %>% .[[4]]; recent_sales_raw_list = recent_sales_raw_list %>% content("parsed") %>% .[[5]]}, error = function(e){test_value = 1})
+            
+            suppressMessages(gc())
+            if(test_value == 0){
+                
+                loop_limit = recent_sales_raw_list %>% length()
+                
+                line_items = NULL
+                if(loop_limit > 0){
+                    for(z in 1:loop_limit){
+                        line_item = cbind(
+                            tcg_ids_of_interest$tcg_id[i],
+                            #recent_sales_raw_list[[z]]$skuId,
+                            recent_sales_raw_list[[z]]$variant,
+                            recent_sales_raw_list[[z]]$condition,
+                            recent_sales_raw_list[[z]]$language,
+                            recent_sales_raw_list[[z]]$quantity,
+                            recent_sales_raw_list[[z]]$listingType,
+                            
+                            recent_sales_raw_list[[z]]$orderDate,
+                            recent_sales_raw_list[[z]]$purchasePrice,
+                            recent_sales_raw_list[[z]]$shippingPrice)
+                        line_items = rbind(line_items,line_item)
+                    }
                 }
+                
+                
+                line_items = line_items %>% as_tibble() %>% 
+                    rename(
+                        tcg_id = V1,
+                        version = V2,
+                        condition = V3,
+                        language = V4,
+                        sold_quantity = V5,
+                        listing_type = V6,
+                        dop = V7,
+                        sell_price = V8,
+                        shipping = V9
+                    )
+                
+                
+                #Let's wrangle this shit
+                
+                basket_line_items = line_items %>% 
+                    as_tibble() %>%
+                    mutate(dop = anytime(as.character(dop),tz = "EST" ),
+                           sold_quantity = as.numeric(sold_quantity),
+                           sell_price = as.numeric(sell_price),
+                           shipping = as.numeric(shipping)) %>%
+                    #mutate(dop = anytime(dop) ) %>%
+                    mutate(sell_price = sell_price + shipping) %>%
+                    select(-shipping) %>%
+                    mutate(version = ifelse(version == "Foil",1,0),
+                           condition = ifelse(condition == "Near Mint","NM",
+                                              ifelse(condition == "Lightly Played", "LP",
+                                                     ifelse(condition == "Moderately Played","MP",
+                                                            ifelse(condition == "Heavily Played","HP",
+                                                                   ifelse(condition == "Damaged","D",""
+                                                                   ))))) ,
+                           listing_type = ifelse(listing_type=="ListingWithoutPhotos",1,0)
+                    ) %>% mutate(dop = floor_date(dop,unit="second")) %>%
+                    filter(dop < Sys.Date()) %>%
+                    group_by(tcg_id,version,condition,language,dop,listing_type) %>%
+                    summarize(sold_quantity = sum(sold_quantity),
+                              sell_price = round(mean(sell_price),2)) %>%
+                    ungroup() %>% arrange(desc(dop))
+                
+                min_date = basket_line_items %>% select(dop) %>% summarize(dop = min(dop)) %>% .[[1]]
+                
+                days_back = Sys.Date() - 30
+                if(min_date == days_back){basket_line_items = basket_line_items%>% filter(dop < days_back)}
+                
+                if(min_date < days_back){basket_line_items = basket_line_items%>% filter(dop > days_back)}
+                
+                
+                
+                all_basket_date_cleanse_tbl = rbind(all_basket_date_cleanse_tbl,basket_line_items)
+                
+                
+                if(min_date < days_back){break}
             }
             
-            
-            line_items = line_items %>% as_tibble() %>% 
-                rename(
-                    tcg_id = V1,
-                    version = V2,
-                    condition = V3,
-                    language = V4,
-                    sold_quantity = V5,
-                    listing_type = V6,
-                    dop = V7,
-                    sell_price = V8,
-                    shipping = V9
-                )
-            
-            
-            #Let's wrangle this shit
-            
-            basket_line_items = line_items %>% 
-                as_tibble() %>%
-                mutate(dop = anytime(as.character(dop),tz = "EST" ),
-                       sold_quantity = as.numeric(sold_quantity),
-                       sell_price = as.numeric(sell_price),
-                       shipping = as.numeric(shipping)) %>%
-                #mutate(dop = anytime(dop) ) %>%
-                mutate(sell_price = sell_price + shipping) %>%
-                select(-shipping) %>%
-                mutate(version = ifelse(version == "Foil",1,0),
-                       condition = ifelse(condition == "Near Mint","NM",
-                                          ifelse(condition == "Lightly Played", "LP",
-                                                 ifelse(condition == "Moderately Played","MP",
-                                                        ifelse(condition == "Heavily Played","HP",
-                                                               ifelse(condition == "Damaged","D",""
-                                                               ))))) ,
-                       listing_type = ifelse(listing_type=="ListingWithoutPhotos",1,0)
-                ) %>% mutate(dop = floor_date(dop,unit="second")) %>%
-                filter(dop < Sys.Date()) %>%
-                group_by(tcg_id,version,condition,language,dop,listing_type) %>%
-                summarize(sold_quantity = sum(sold_quantity),
-                          sell_price = round(mean(sell_price),2)) %>%
-                ungroup() %>% arrange(desc(dop))
-            
-            min_date = basket_line_items %>% select(dop) %>% summarize(dop = min(dop)) %>% .[[1]]
-            
-            days_back = Sys.Date() - 15
-            if(min_date == days_back){basket_line_items = basket_line_items%>% filter(dop < days_back)}
-            
-            if(min_date < days_back){basket_line_items = basket_line_items%>% filter(dop > days_back)}
-            
-            
-            
-            all_basket_date_cleanse_tbl = rbind(all_basket_date_cleanse_tbl,basket_line_items)
-            
- 
-            if(min_date < days_back){break}
         }
         
-    }
-    
-    
-    if( (is.null(all_basket_date_cleanse_tbl)) & (code == 200) ){
-        next
-    }else if( (code != 200) & (code != 500) & (code != 400)){
-        print(paste0("Status Code: ",code," : Failed. Hibernating for 5 minutes."))
-        Sys.sleep(10)
-    }
-    
-    
-    i_number = i_number + 1
-    five_hundred_group = rbind(five_hundred_group,all_basket_date_cleanse_tbl)
-    if(i_number == 500) {
-        grouping = grouping + 1
-        setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards")
-        write_csv(five_hundred_group,file = paste0("mtg_grouping_",grouping,".csv"))
-        i_number = 0
-        five_hundred_group = NULL
-    }
-    
-    if(identical(all_basket_date_cleanse_tbl %>% select(tcg_id) %>% distinct() %>% unlist(),character(0)) ){next}
-    if(tcg_ids_of_interest[i,] != all_basket_date_cleanse_tbl %>% select(tcg_id) %>% distinct() %>% unlist() ){
-        print(paste0("The desired tcg_id of ",tcg_ids_of_interest[i,],
-                     " does not match the id found in the packet return ( ",
-                     all_basket_date_cleanse_tbl %>% select(tcg_id) %>% distinct() %>% unlist(),
-                     " ). Instituting custom sleep until match has been re-established."));
-        Sys.sleep(60)
-    }
-    
-    print(paste(i,nrow(tcg_ids_of_interest),scales::percent(i/nrow(tcg_ids_of_interest))))
-},error = function(e){print(paste("Error on id #:",i,sep=" "))})
+        
+        if( (is.null(all_basket_date_cleanse_tbl)) & (code == 200) ){
+            next
+        }else if( (code != 200) & (code != 500) & (code != 400)){
+            print(paste0("Status Code: ",code," : Failed. Hibernating for 5 minutes."))
+            Sys.sleep(10)
+        }
+        
+        
+        i_number = i_number + 1
+        five_hundred_group = rbind(five_hundred_group,all_basket_date_cleanse_tbl)
+        if(i_number == 500) {
+            grouping = grouping + 1
+            setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards")
+            write_csv(five_hundred_group,file = paste0("mtg_grouping_",grouping,".csv"))
+            i_number = 0
+            five_hundred_group = NULL
+        }
+        
+        if(identical(all_basket_date_cleanse_tbl %>% select(tcg_id) %>% distinct() %>% unlist(),character(0)) ){next}
+        if(tcg_ids_of_interest[i,] != all_basket_date_cleanse_tbl %>% select(tcg_id) %>% distinct() %>% unlist() ){
+            print(paste0("The desired tcg_id of ",tcg_ids_of_interest[i,],
+                         " does not match the id found in the packet return ( ",
+                         all_basket_date_cleanse_tbl %>% select(tcg_id) %>% distinct() %>% unlist(),
+                         " ). Instituting custom sleep until match has been re-established."));
+            Sys.sleep(60)
+        }
+        
+        print(paste(i,nrow(tcg_ids_of_interest),scales::percent(i/nrow(tcg_ids_of_interest))))
+    },error = function(e){print(paste("Error on id #:",i,sep=" "))})
 })
 
 setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_rosters")
 set_rosters <-
     list.files(pattern = "*.csv") %>% 
-    map_df(~read_csv(.))
-
-
+    map_df(~read_csv(.,col_types = cols(.default = "c"))) %>%
+    as_tibble() 
 
 set_baskets = NULL
 setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards")
@@ -474,15 +455,14 @@ set_baskets = set_baskets %>%
     mutate(version = as.numeric(version),
            dop = anytime(dop),
            listing_type = as.numeric(listing_type),
-           sold_quantity = as.numeric(sold_quantity),,
+           sold_quantity = as.numeric(sold_quantity),
            sell_price = as.numeric(sell_price))
-
-
+end_time = Sys.time()
+end_time-start_time
 
 distinct_basket_dates = set_baskets  %>% mutate(date = floor_date(dop,"day")) %>% select(date) %>% distinct() %>% arrange(date) %>%
     filter(date != min(date)) %>%
-    filter(date != min(date)) %>% 
-    filter(date != max(date)) %>% 
+    filter(date != min(date))%>%
     filter(date != max(date))
 
 distinct_basket_dates %>% arrange(desc(date))
@@ -490,6 +470,7 @@ distinct_basket_dates %>% arrange(desc(date))
 days = 0
 
 for(i in distinct_basket_dates$date){
+    #i = max(distinct_basket_dates$date)
     baskets_bucket = NULL
     days = days + 1
     basket_number = 0
@@ -511,12 +492,18 @@ for(i in distinct_basket_dates$date){
     
     print(paste(days,length(distinct_basket_dates$date)))
     
+    
     gc()
     expanded_baskets_tbl = baskets_bucket %>%
         mutate(tcg_id = as.numeric(tcg_id),
                date = as.Date(anytime(i)),
                daily_basket_number = basket) %>%
-        left_join(set_rosters, by=c("tcg_id"="tcg_id","version"="isFoil")) %>%
+        left_join(set_rosters%>%
+                      mutate(tcg_id = as.numeric(tcg_id),
+                             isFoil = as.numeric(isFoil),
+                             cmc = as.numeric(cmc),
+                             number = as.numeric(number)) %>%
+                      filter(!is.na(tcg_id)), by=c("tcg_id"="tcg_id","version"="isFoil")) %>%
         select(date,tcg_id,Card_name,Set,Rarity,number,version,condition,language,
                cmc,typing,coloring,description,flavor,
                listing_type,sold_quantity,dop,sell_price,daily_basket_number,basket)
@@ -527,3 +514,4 @@ for(i in distinct_basket_dates$date){
     bq_table_upload(x=mybq, values = expanded_baskets_tbl, fields=as_bq_fields(expanded_baskets_tbl),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
     
 }
+

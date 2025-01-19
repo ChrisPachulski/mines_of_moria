@@ -1,46 +1,92 @@
-pacman::p_load(jsonlite)
-patches = read_json("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
+pacman::p_load(chatgpt,jsonlite)
+patches = fromJSON("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
+
 
 three_day_newspaper <- function(){
+    #' Connect to three_day_newspaper database
+    #' 
+    #' @param user The username to use when connecting to the database.
+    #' @param password The password to use when connecting to the database.
+    #' @param dbname The name of the database to connect to.
+    #' @param host The IP address of the database host.
+    #'
+    #' @return A connection to the three_day_newspaper database.
+    #'
+    #' @export
     con = dbConnect(MySQL(), user='remote', password=patches$mysql, dbname ='three_day_newspaper',host=patches$mysql_ip)
     con
 }
 one_day_newspaper <- function(){
+    #' Connect to one_day_newspaper database
+    #' 
+    #' @param user The username to use when connecting to the database.
+    #' @param password The password to use when connecting to the database.
+    #' @param dbname The name of the database to connect to.
+    #' @param host The IP address of the database host.
+    #'
+    #' @return A connection to the three_day_newspaper database.
+    #'
+    #' @export
     con = dbConnect(MySQL(), user='remote', password=patches$mysql, dbname ='newspaper',host=patches$mysql_ip)
     con
 }
 
 gaeas_cradle <- function(){
+    #' Connect to Gaeas Cradle BigQuery Database
+    #' 
+    #' @param patches A vector containing the email patches. 
+    #' 
+    #' @return A BigQuery connection object. 
+    #' 
+    #' @export 
+    #'
+    #'
+    #'
+    service_account_file = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json'
+    gar_auth_service(service_account_file)
+    
+    bq_auth(path = service_account_file)
+    
     con <- dbConnect(
         bigrquery::bigquery(),
         project = "gaeas-cradle",
         dataset = "premiums",
         billing = "gaeas-cradle"
     )
-    bq_auth(email = patches$patches, use_oob = TRUE)
+    
     options(scipen = 20)
     con
 }
 
 google_auths = function(){
-    options(httr_oob_default=TRUE) 
-    options(gargle_oauth_email = patches$og_patches)
-    drive_auth(email = patches$og_patches,use_oob=TRUE)
-    gs4_auth(email = patches$og_patches,use_oob=TRUE)
+    options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+    
+    drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+    # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
+    gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+    gc()
     suppressMessages(gc())
 }
 
 set_list = function(){
+    
+    options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+    
+    drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+    # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
+    gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+    gc()
+    
     ss <- drive_get("Sets")
     
     Sets <-  suppressMessages(read_sheet(ss,"Sets") %>% mutate_if(is.character,as.factor))
     
     ck_conversion <-  suppressMessages(read_sheet(ss,"mtgjson_ck_sets"))
     
-    tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+    tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
         #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
         rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-        mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+        mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
             rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
             #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
             mutate(Semi = paste(name, Set,sep=""))})
@@ -52,8 +98,12 @@ set_list = function(){
 }
 
 
-
 dataset_extraction_and_replacement = function(dataset,email_body = list()){
+    if(dataset == "newspaper_updated"){
+        updated_at_tbl = as_tibble(data.frame(data_value = Sys.Date()))
+        return(updated_at_tbl)
+    }
+    
     if(dataset == "premiums"){
         bq_con = gaeas_cradle()
         
@@ -65,9 +115,10 @@ dataset_extraction_and_replacement = function(dataset,email_body = list()){
                             )
          ',sep = "")
         table_limitations <- dbSendQuery(bq_con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble() %>% drop_na()
-        
+        table_limitations = table_limitations %>% mutate(most_recent_table = most_recent_table-1)
         if(table_limitations$days_behind_today > 1){
             days_behind = as.numeric(Sys.Date() - table_limitations$most_recent_table) - 1
+            
             
             for(i in 1:days_behind){
                 new_table_date = gsub("","",table_limitations$most_recent_table + i)
@@ -108,7 +159,7 @@ dataset_extraction_and_replacement = function(dataset,email_body = list()){
     }
     if(dataset == "ck_funny_money"){
         bq_con = gaeas_cradle()
-        
+        dataset = "ck_funny_money"
         statement <- paste('SELECT table_name, most_recent_table, DATE_DIFF( CURRENT_DATE() , most_recent_table ,DAY) days_behind_today
                             FROM (
                                 SELECT max(CAST(regexp_replace(regexp_extract(table_name,"\\\\d{4}_\\\\d{2}_\\\\d{2}"),"_","-") as Date)) most_recent_table, regexp_extract(table_name,"\\\\_[A-Za-z]+\\\\_[A-Za-z]+") as table_name
@@ -516,10 +567,12 @@ dataset_extraction_and_replacement = function(dataset,email_body = list()){
                                 FROM `gaeas-cradle`.',dataset,'.INFORMATION_SCHEMA.TABLES
                                 GROUP BY table_name
                             )
+                            ORDER BY most_recent_table desc
+                            LIMIT 5
          ',sep = "")
         table_limitations <- dbSendQuery(bq_con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble() %>% drop_na()
         
-        if(table_limitations$days_behind_today > 1){
+        if(table_limitations$days_behind_today > 2){
             days_behind = as.numeric(Sys.Date() - table_limitations$most_recent_table) - 1
             
             for(i in 1:days_behind){
@@ -557,18 +610,18 @@ dataset_extraction_and_replacement = function(dataset,email_body = list()){
                             WHEN Classification = "E" then "F" 
                             WHEN Classification = "F" then "G" 
                             WHEN Classification = "Ignore" then "H"
-                            END as custom_sort ', "FROM `gaeas-cradle.",dataset,".",gsub("-","_",table_limitations$most_recent_table - 4),table_limitations$table_name,"` a ", "ORDER BY custom_sort ",sep = "")
+                            END as custom_sort ', "FROM `gaeas-cradle.",dataset,".",gsub("-","_",table_limitations$most_recent_table - 5),table_limitations$table_name,"` a ", "ORDER BY custom_sort ",sep = "")
         delayed_ensemble <- dbSendQuery(bq_con, statement = statement) %>% dbFetch( n = -1) %>% clean_names() 
         delayed_ensemble <- delayed_ensemble %>% rename(Card = name, 
-                                                           Recent_BL = current_val, 
-                                                           Historical_plus_minus = iqr,
-                                                           Historical_Median = median_val, 
-                                                           Historical_Max = outer_lim,
-                                                           Forecasted_BL = max_forecast_value,
-                                                           Forecast_plus_minus = plus_minus,
-                                                           Target_Date = date,
-                                                           Tier = classification,
-                                                           Behavior = safety) %>%
+                                                        Recent_BL = current_val, 
+                                                        Historical_plus_minus = iqr,
+                                                        Historical_Median = median_val, 
+                                                        Historical_Max = outer_lim,
+                                                        Forecasted_BL = max_forecast_value,
+                                                        Forecast_plus_minus = plus_minus,
+                                                        Target_Date = date,
+                                                        Tier = classification,
+                                                        Behavior = safety) %>%
             select(-sd) %>% mutate(uuid = all_editions$uuid[match(key,all_editions$Key)],
                                    number = all_editions$number[match(uuid,all_editions$uuid)]) %>%
             clean_names() %>%
@@ -582,7 +635,7 @@ dataset_extraction_and_replacement = function(dataset,email_body = list()){
                             WHEN Classification = "E" then "F" 
                             WHEN Classification = "F" then "G" 
                             WHEN Classification = "Ignore" then "H"
-                            END as custom_sort ', "FROM `gaeas-cradle.",dataset,".",gsub("-","_",table_limitations$most_recent_table - 1),table_limitations$table_name,"` a ", "ORDER BY custom_sort ",sep = "")
+                            END as custom_sort ', "FROM `gaeas-cradle.",dataset,".",gsub("-","_",table_limitations$most_recent_table - 2),table_limitations$table_name,"` a ", "ORDER BY custom_sort ",sep = "")
         current_ensemble <- dbSendQuery(bq_con, statement = statement) %>% dbFetch( n = -1) %>% clean_names() 
         current_ensemble <- current_ensemble %>% rename(Card = name, 
                                                         Recent_BL = current_val, 
@@ -607,8 +660,8 @@ dataset_extraction_and_replacement = function(dataset,email_body = list()){
 email_content_creation = function(email_body){
     message_content = NULL
     for(i in 1:(email_body %>% length())){
-       message_content = rbind(message_content,email_body[[i]]) 
-       message_content = suppressWarnings(message_content%>% as_tibble())
+        message_content = rbind(message_content,email_body[[i]]) 
+        message_content = suppressWarnings(message_content%>% as_tibble())
     }
     
     body_message_tbl = message_content %>% 
@@ -659,9 +712,16 @@ email_content_creation = function(email_body){
 }
 
 send_email = function(to,from,email_content){
-    gm_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gmail_ids.json",use_oob=T)
     
-    gm_auth(email = TRUE)
+    gm_auth("wolfoftinstreet@gmail.com")
+    
+    gm_token_write(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/ban_newspaper_web.rds", key = "GMAILR_KEY")
+    
+    gm_auth(token = gm_token_read(
+        "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/ban_newspaper_web.rds",
+        key = "GMAILR_KEY"
+    ))
+    
     
     my_email = gm_mime() %>%
         gm_to(to) %>%
@@ -669,7 +729,11 @@ send_email = function(to,from,email_content){
         gm_subject(paste0(Sys.Date()," Newspaper Error Report")) %>%
         gm_text_body(email_content)
     
-    gm_send_message(my_email)
+    tryCatch({
+        gm_send_message(my_email)
+    }, error = function(e) {
+        print(e$message)
+    })
 }
 
 error_csv = function(email_body){
@@ -690,10 +754,15 @@ error_csv = function(email_body){
 
 ban_delayed_newspaper = function(table, data){
     ban_con = three_day_newspaper()
+    if(table == "newspaper_updated"){
+        data = data
+        dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='newspaper_updated')
+        dbDisconnect(ban_con)
+    }
     if(table == "kpi"){
-    data = data
-    dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='top_25')
-    dbDisconnect(ban_con)
+        data = data
+        dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='top_25')
+        dbDisconnect(ban_con)
     }
     if(table == "vendor_growth"){
         data = data
@@ -719,33 +788,38 @@ ban_delayed_newspaper = function(table, data){
 }
 
 ban_current_newspaper = function(table, data){
-   ban_con = one_day_newspaper() 
-   if(table == "kpi"){
-       data = data
-       dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='top_25')
-       dbDisconnect(ban_con)
-   }
-   if(table == "vendor_growth"){
-       data = data
-       dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='vendor_levels')
-       dbDisconnect(ban_con)
-   }
-   if(table == "buylist_growth"){
-       data = data
-       dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='buylist_levels')
-       dbDisconnect(ban_con)
-   }
-   if(table == "ensemble_forecast_results"){
-       data = data
-       dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='ensemble_forecast')
-       dbDisconnect(ban_con)
-   }
-   if(table == "all_editions"){
-       data = data
-       dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='mtgjson_portable')
-       dbDisconnect(ban_con)
-   }
-   
+    ban_con = one_day_newspaper() 
+    if(table == "newspaper_updated"){
+        data = data
+        dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='newspaper_updated')
+        dbDisconnect(ban_con)
+    }
+    if(table == "kpi"){
+        data = data
+        dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='top_25')
+        dbDisconnect(ban_con)
+    }
+    if(table == "vendor_growth"){
+        data = data
+        dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='vendor_levels')
+        dbDisconnect(ban_con)
+    }
+    if(table == "buylist_growth"){
+        data = data
+        dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='buylist_levels')
+        dbDisconnect(ban_con)
+    }
+    if(table == "ensemble_forecast_results"){
+        data = data
+        dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='ensemble_forecast')
+        dbDisconnect(ban_con)
+    }
+    if(table == "all_editions"){
+        data = data
+        dbWriteTable(conn=ban_con, overwrite = TRUE, append= FALSE, value = data, name ='mtgjson_portable')
+        dbDisconnect(ban_con)
+    }
+    
 }
 
 

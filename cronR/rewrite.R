@@ -1,4 +1,7 @@
 #Functions & packages####
+install.packages('pacman')
+pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,readr,dplyr,gargle,httr,bigrquery,RSelenium,janitor,googleAuthR,curl)
+
 invisible(right <- function(text, num_char) {
   substr(text, nchar(text) - (num_char-1), nchar(text))
 }) #Recreating the right function from Excel 
@@ -40,16 +43,23 @@ invisible(moveme <- function (invec, movecommand) {
   }
   myVec
 })
-invisible(gaeas_cradle <- function(email){
-  con <- dbConnect(
-    bigrquery::bigquery(),
-    project = "gaeas-cradle",
-    dataset = "premiums",
-    billing = "gaeas-cradle"
-  )
-  bq_auth(email = email, use_oob = TRUE)
-  options(scipen = 20)
-  con
+invisible(gaeas_cradle <- function(){
+    
+    service_account_file = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json'
+    gar_auth_service(service_account_file)
+    
+    bq_auth(path = service_account_file)
+    
+    con <- dbConnect(
+        bigrquery::bigquery(),
+        project = "gaeas-cradle",
+        dataset = "premiums",
+        billing = "gaeas-cradle"
+    )
+    #bq_auth(email = patches$patches, use_oob = TRUE)
+    options(scipen = 20)
+    con
+
 })
 invisible(tracker_creation <- function(tracker){
   tracker = tracker %>% `colnames<-` (c("Key",format(seq(from = (currentDate - 21), to = currentDate, by = 'day'),format = "%Y-%m-%d"))) %>%
@@ -149,12 +159,24 @@ invisible(chrome <-function(ip){
   remDr$maxWindowSize()
   remDr
 })
-install.packages("pacman")
-library(pacman)
-pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery,RSelenium)
+
 
 #Refresh Our Master Roster####
-content <- fromJSON("https://mtgjson.com/api/v5/AllPrintings.json")
+# URL of the large JSON file
+url <- "https://mtgjson.com/api/v5/AllPrintings.json"
+
+# Increase the timeout to 500 seconds and download the file
+response <- GET(url, timeout(500), write_disk("AllPrintings.json", overwrite = TRUE))
+
+# Check if the download was successful
+if (status_code(response) == 200) {
+    print("File downloaded successfully!")
+} else {
+    stop("Failed to download file. HTTP status code: ", status_code(response))
+}
+
+content <- fromJSON('/home/cujo253/AllPrintings.json')
+
 #library(tidyjson)
 sets_of_interest <- content$data %>% names()
 
@@ -284,18 +306,21 @@ setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/")
 csvFileName <- paste("C20_Addition",".csv",sep="")
 write.csv(Shortened_Dictionary, file=csvFileName, row.names = FALSE)
 
-con <- gaeas_cradle("wolfoftinstreet@gmail.com")
+#Shortened_Dictionary = read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv")
+
+con <- gaeas_cradle()
 mybq <- bq_table(project = "gaeas-cradle", dataset = "roster", table = paste("mtgjson",sep=""))
 bq_table_upload(x=mybq, values = Shortened_Dictionary, fields=as_bq_fields(Shortened_Dictionary),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
-print("BQ Premium Upload Successful!")
+print("BQ Roster Upload Successful!")
 
 
 #CK Buylist####
-options(httr_oob_default=TRUE) 
-options(gargle_oauth_email = "pachun95@gmail.com")
-drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
-gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+
+# Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
+gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
 gc()
+
 #drive_create("TCG_Review")
 ss <- drive_get("Sets")
 
@@ -306,7 +331,7 @@ ck_conversion <- read_sheet(ss,"mtgjson_ck_sets")
 tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/User/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})
@@ -315,26 +340,29 @@ Updated_Tracking_Keys = Updated_Tracking_Keys %>% replace_na(list(Foil = "")) %>
                                                                                         Key = trimws(paste(name,Set,Rarity," ",Foil,sep="")),
                                                                                         Semi = paste(name,Set,sep="")) 
 
-CK_Smaller_List <-fromJSON("https://api.cardkingdom.com/api/pricelist")                                                       %>% 
+
+CK_Smaller_List <-fromJSON("https://api.cardkingdom.com/api/pricelist")                                          %>% 
   as.data.frame()                                                                                                %>%
   mutate(data.edition = ifelse(data.edition == "Promotional",data.variation,data.edition))                       %>%
   mutate(data.edition = ifelse(grepl("The List",data.edition),gsub("\\/The List","",data.edition),data.edition)) %>%
   mutate(data.edition = ck_conversion$Standardized[match(data.edition,ck_conversion$CK)])                        %>%
   mutate(Semi = paste(data.name,data.edition, sep=""))                                                           %>%
   mutate(data.is_foil = ifelse(data.is_foil == "false", "", "FOIL"))                                             %>%
-  mutate(data.name = gsub("(\\s+Extended Art|\\s+Showcase)","",data.name) )                                      %>%
+  mutate(data.name = gsub("(\\s+Extended Art|\\s+Showcase|\\s+Borderless|\\s+Surge)","",data.name) )                                      %>%
   mutate(rarity = Updated_Tracking_Keys$Rarity[match(Semi, Updated_Tracking_Keys$Semi)])                         %>%
   mutate(number = Updated_Tracking_Keys$number[match(Semi, Updated_Tracking_Keys$Semi)])                         %>%
   mutate(CK_Key = trimws(paste(data.name, data.edition, rarity," ",data.is_foil, sep="")))                       %>%
   select(data.id, CK_Key,data.name,data.edition,rarity, number,data.is_foil,data.price_buy,data.qty_buying)      %>%
   `colnames<-` (c("ckid","CK_Key","Card Name","Set","Rarity","number","NF/F","BL_Value","Qty_Des"))              %>%
   mutate(Gold_Merge = Sets$GF_Abbr[match(Set,Sets$mtgjson)])                                                     %>%
-  mutate(MTG_Gold_Key = paste(`Card Name`,Gold_Merge, sep =""))                                                  %>%
+  mutate(MTG_Gold_Key = paste(`Card Name`,Gold_Merge,number,`NF/F`, sep =""),
+         Gold_Merge = ifelse(is.na(Gold_Merge),'',as.character(Gold_Merge))
+         )                                                   %>%
   na.omit() %>%
   left_join(Updated_Tracking_Keys %>% select(uuid,ckid), by = c("ckid"="ckid"))                                  %>%
   select(uuid,everything())   
 
-#CK_Smaller_List %>% filter(`Card Name` == "Gideon of the Trials")
+
 # ck_new_list <- fromJSON("https://api.cardkingdom.com/api/v2/pricelist")
 # CK_Smaller <- fromJSON("https://api.cardkingdom.com/api/pricelist")
 # View(ck_new_list %>% as.data.frame() %>% filter(data.edition == "Double Masters"))
@@ -343,65 +371,82 @@ CK_Smaller_List <-fromJSON("https://api.cardkingdom.com/api/pricelist")         
 # View(CK_Smaller_List)
 #Goldfish Pricing Retrieval#### 
 gc()
-sets = Sets %>% select(sets) %>% filter(sets != "" & sets != "BOOSTER" & sets != "DDR" & sets != "PD2" & sets != "PD3", 
-                                        sets != "PRM-GWP" & sets != "PRM-HRO" & sets != "3ED" & sets != "PRM-JSS" & sets != "PRM-REL" &
-                                          sets != "PRM-SDCC18" & sets != "PRM-SDCC19" & sets != "P2XM" & sets != "STX" & sets != "STA"
-                                        & sets != "C21"& sets != "C22"& sets != "C23"& sets != "MH2"& sets != "RMH1"& sets != "AFR" & 
-                                          sets != "MID"& sets != "VOW" & sets!="KHC" & sets!="AFC"  & sets!="VOC"  & sets!="NEO" & 
-                                          sets!="NEC"  & sets!="DBL"  & sets!="CC2") %>% mutate(sets = as.character(sets))
-total <- nrow(sets)
+sets = Sets %>% select(MTG_Goldfish_Sets,GF_Abbr) %>%  
+    as_tibble() %>% mutate(sets = as.character(GF_Abbr)) %>% drop_na() %>%
+    mutate(MTG_Goldfish_Sets = gsub(' ','+',gsub('[[:punct:]]','',MTG_Goldfish_Sets))) %>%
+    distinct() %>%
+    drop_na()
 
+total <- nrow(sets)
 
 Gold_Market <-NULL #Create null value - note each scrape is given it's own unique null value so that we have each scrapes original source material to prevent excessive scrapping
 setwd("/home/cujo253")
-for(i in 1:total){
-  url <- paste("https://www.mtggoldfish.com/index/",as.character(sets[i,]),"#paper",sep="")
-  #dld_url <- download.file(url, destfile = "scrapedpage.html", quiet=TRUE)
-  Gold <- url %>% read_html()%>%html_nodes("table") %>% .[2] %>% html_table(fill = TRUE) %>% as.data.frame() 
-  Gold_Market <- rbind(Gold_Market,Gold)
-  Sys.sleep(.25)
+for(i in 1:total) {
+    url <- paste("https://www.mtggoldfish.com/sets/", sets$MTG_Goldfish_Sets[i], "/All+Cards#paper", sep="")
+    tryCatch({
+        Gold <- url %>% read_html() %>% html_nodes("table") %>% .[1] %>% html_table(fill = TRUE) %>% as.data.frame() 
+        if(ncol(Gold) > 4) {
+            Gold = Gold %>% filter(Rarity != 'BasicCommonUncommonRareMythicSpecial') %>%
+                mutate(Set = sets$sets[i]) %>%
+                clean_names() %>% 
+                mutate(tabletop_price = trimws(gsub('\\$|\\,','', tabletop_price)),
+                       foil = str_extract(card, '(Foil|foil)$'),
+                       card = gsub('\\s*(f|F)oil$', '', card),
+                       card = gsub('\\s*(s|S)urge(\\s*(f|F)oil)*$', '', card),
+                       card = gsub('\\s*(p|P)rerelease$', '', card),
+                       card = gsub('\\s*(b|B)orderless$', '', card),
+                       card = gsub('\\s*(e|E)xtended$', '', card),
+                       card = gsub('\\s*(s|S)howcase$', '', card),
+                       card = gsub('\\s*(n|N)eon ink.*$', '', card),
+                       card = gsub('\\s*(s|S)ealed$', '', card),
+                       card = gsub('\\s*(p|P)laneswalkerstamp$', '', card),
+                       card = gsub(' - $', '', card)) %>%
+                rename(Card = card, Set = set, Rarity = rarity, Price = tabletop_price, Daily = daily_d, `Daily...` = daily, Weekly = weekly_d, `Weekly....` = weekly, Foil = foil,Card_Num=card_num) %>%
+                select(Card, Set, Rarity, Price, Daily, `Daily...`, Weekly, `Weekly....`, Foil,Card_Num)
+            Gold_Market <<- rbind(Gold_Market, Gold)  
+        } else {
+            base::message("Insufficient columns encountered on: ", sets$MTG_Goldfish_Sets[i])
+        }
+    }, error = function(e) {
+        base::message("Error encountered on URL: ", url, "\nError message: ", e$message)
+    })
+    Sys.sleep(.25)
 }
+Gold_Market = Gold_Market %>% 
+    mutate(Card = gsub('( - )*(s|S)urge foil','',Card),
+           Card = gsub('Extended$','',Card),
+           Card = gsub('Showcase$','',Card),
+           Rarity = tolower(Rarity)) %>%
+    distinct()
+
 Back_Up_Gold <- Gold_Market
-#Gold_Market <- Back_Up_Gold
-#View(Gold_Market)
-sets_Foil = Sets %>% select(sets_Foil) %>% filter(sets_Foil != "" & sets_Foil != "DST_F" & sets_Foil != "OGW_F" & sets_Foil != "VI_F" &
-                                                    sets_Foil != "MB1_F" & sets_Foil != "UGL_F" & sets_Foil != "KHM_F" & sets_Foil != "STX_F"  & 
-                                                    sets_Foil != "STA_F" & sets_Foil != "C21_F" & sets_Foil != "MH2_F" & sets_Foil != "RMH1_F" & 
-                                                    sets_Foil != "AFR_F" & sets_Foil != "MID_F"& sets_Foil != "VOW_F") %>% mutate(sets_Foil = as.character(sets_Foil))
-total <- nrow(sets_Foil)
-
-
-Gold_Foil_Market <-NULL #Create null value - note each scrape is given it's own unique null value so that we have each scrapes original source material to prevent excessive scrapping
-
-for(i in 1:total){
-  url <- paste("https://www.mtggoldfish.com/index/",as.character(sets_Foil[i,]),"#paper",sep="")
-  #dld_url <- download.file(url, destfile = "scrapedpage.html", quiet=TRUE)
-  Shiny_Gold <- url %>% read_html()%>%html_nodes("table") %>% .[2] %>% html_table(fill = TRUE) %>% as.data.frame()
-  Gold_Foil_Market <- rbind(Gold_Foil_Market,Shiny_Gold)
-  Sys.sleep(.05)
-}
 
 End_Time <- Sys.time()
-Foil_Market <- Gold_Foil_Market
 
 
-Gold_Market <- Gold_Market %>% select(Daily, Card, Set,Price) %>% mutate(Price = suppressWarnings(round(as.numeric(Price) * .845,2))) %>% mutate(Daily = paste(Card,Set, sep=""))
-Foil_Market <- Foil_Market %>% select(Daily, Card, Set,Price) %>% mutate(Price = suppressWarnings(round(as.numeric(Price) * .845,2))) %>% mutate(Daily = paste(Card,Set, sep=""))
+Gold_Market_Priced <- Gold_Market %>% select(Daily, Card, Set,Price,Foil,Card_Num) %>% as_tibble() %>% 
+    mutate(Price = round(as.numeric(gsub("[^0-9.]", "", as.character(Price))) * .845,2),
+           Foil = ifelse(is.na(Foil),'','FOIL')) %>% mutate(Daily = paste(Card,Set,Card_Num,Foil, sep=""))
 
 CK_Smaller_List <- CK_Smaller_List %>% mutate(param = Updated_Tracking_Keys$param[match(ckid,Updated_Tracking_Keys$ckid)], CK_Abbr = Gold_Merge)
+
+CK_Smaller_List = CK_Smaller_List %>%
+    left_join(Gold_Market_Priced %>% select(Daily,Price) %>% rename(Gold_Market=Price),by=c("MTG_Gold_Key"="Daily") ) 
+    
+
 CK_Smaller_List$CK_Abbr <- ifelse(CK_Smaller_List$`NF/F` == "FOIL",paste("F",as.character(CK_Smaller_List$CK_Abbr),sep=""), as.character(CK_Smaller_List$CK_Abbr))
-CK_Smaller_List$Gold_Market <- NA
-CK_Smaller_List$Gold_Market <- ifelse(CK_Smaller_List$`NF/F` == "FOIL", Foil_Market$Price[match(CK_Smaller_List$MTG_Gold_Key,Foil_Market$Daily)] ,Gold_Market$Price[match(CK_Smaller_List$MTG_Gold_Key,Gold_Market$Daily)])
 CK_Smaller_List$param <- ifelse(CK_Smaller_List$`NF/F` == "FOIL", Updated_Tracking_Keys$param[match(gsub(" FOIL","",CK_Smaller_List$CK_Key),Updated_Tracking_Keys$Key)], CK_Smaller_List$param)
 
 CK_Smaller_List$CK_Abbr <- Updated_Tracking_Keys$abbr[match(CK_Smaller_List$param,Updated_Tracking_Keys$param)]
 CK_Smaller_List$number_key <- paste(CK_Smaller_List$CK_Abbr,"-",CK_Smaller_List$number,sep="")
 
+Gold_Market=NULL
 Basic_Market_Review <- CK_Smaller_List %>% 
-  select(ckid,CK_Key,`Card Name`, Set, Rarity, `NF/F`, Gold_Market, Qty_Des, BL_Value, Gold_Market) %>%
+  select(ckid,CK_Key,`Card Name`, Set, Rarity, `NF/F`, Gold_Market, Qty_Des, BL_Value, Qty_Des) %>%
   replace_na(list(Gold_Market = 0)) %>%
   `colnames<-` (c("ckid","Key","Card","Set","Rarity","F/NF","MKT_Est","BL","BL Qty"))
 
+#Basic_Market_Review %>% filter(grepl('Brother',Set))
 
 #CK Best Sellers####
 #library(foreach)
@@ -414,33 +459,35 @@ Limit <- data.frame(raw_elements = read_html("https://www.cardkingdom.com/catalo
 Sys.sleep(3)
 Start_Time <- Sys.time()
 CK_Prices_df <- NULL
+i= 1
 for(i in 1:Limit){
-  tryCatch({
     tryCatch({
-      CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
-      Card <- content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text()
-      Set <- gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) 
-      Rarity <- gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))
-      Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
-      key <- paste(Card, Set, Rarity,sep="")
-      Results <- data.frame(key,Card,Set,Rarity,Price,i)
-      CK_Prices_df <- rbind(CK_Prices_df,Results)
-      Sys.sleep(.9)}, error = function(e){
-        Sys.sleep(120)
-        CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
-        Card <- content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text()
-        Set <- gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) 
-        Rarity <- gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))
-        Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
-        key <- paste(Card, Set, Rarity,sep="")
-        Results <- data.frame(key,Card,Set,Rarity,Price,i)
-        CK_Prices_df <- rbind(CK_Prices_df,Results)
-        Sys.sleep(.9)
-      })}, error = function(e){
-        next}
-  )
+        tryCatch({
+            CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
+            Card <- gsub("\\s\\(.*\\)$","",content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text())
+            Set <- gsub("\n.*","",gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())) )
+            Rarity <- gsub('\n.*','',gsub("\\)","",gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text()))))
+            Number <- as.numeric(gsub('^0*','',gsub('.*\\#\\:\\s*','',gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())))))
+            Price <- as.numeric(gsub("(\\$|\\,)","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
+            key <- paste(Card, Set, Rarity,sep="")
+            Results <- data.frame(key,Card,Set,Rarity,Number,Price,i)
+            CK_Prices_df <- rbind(CK_Prices_df,Results)
+            Sys.sleep(3)}, error = function(e){
+                Sys.sleep(20)
+                CK_Results <- GET(paste("https://www.cardkingdom.com/catalog/view?filter%5Bipp%5D=60&filter%5Bsort%5D=most_popular&filter%5Bsearch%5D=mtg_advanced&filter%5Bcategory_id%5D=0&filter%5Bmulti%5D%5B0%5D=1&filter%5Btype_mode%5D=any&filter%5Bmanaprod_select%5D=any&page=",i,sep=""))#, body = body)
+                Card <- gsub('\\s*\\(.*','',content(CK_Results,"text") %>% read_html %>% html_nodes(".productDetailTitle") %>% html_text())
+                Set <- str_extract(gsub(" \\([A-Z]\\)$","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())),'.*?(?=\\n)')
+                Rarity <- str_extract(gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())),"^[A-Z]{1}")
+                Number = gsub('^0','',str_extract(gsub("^.*\\s\\(","",trimws(content(CK_Results,"text") %>% read_html%>% html_nodes(".productDetailSet") %>% html_text())),"[a-zA-Z]*[0-9]+$"))
+                Price <- as.numeric(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))[seq(1, length(gsub("\\$","",trimws(content(CK_Results,"text") %>% read_html %>% html_nodes(".stylePrice") %>% html_text()))),4)])
+                key <- paste(Card, Set, Rarity,sep="")
+                Results <- data.frame(key,Card,Set,Rarity,Number,Price,i)
+                CK_Prices_df <- rbind(CK_Prices_df,Results)
+                Sys.sleep(3)
+            })}, error = function(e){
+                print(str_glue("Error on page:{i}"))}
+    )
 }
-
 
 # CK_Prices_df <- foreach(i = 1:Limit, .packages = c("rvest","httr","tidyverse"),.combine=rbind)%dopar% {
 #   Sys.sleep(.5)
@@ -454,12 +501,16 @@ for(i in 1:Limit){
 # }
 End_Time <- Sys.time()
 #stopCluster(cl)
-colnames(CK_Prices_df)[6] <- "Rank"
+colnames(CK_Prices_df)[7] <- "Rank"
+CK_Prices_df = CK_Prices_df %>% 
+#    separate(Rarity, into = c("Rarity","Number"),sep='\\n.*\\n\\s*Collector #: ') %>%
+#    mutate(Number = gsub("^0+","",Number)) %>%
+    mutate(key = paste(Card, Set, Rarity,sep=""))
 ck_back_up = CK_Prices_df
 
 #CK_Prices_df = ck_back_up
 
-CK_Prices_df <- CK_Prices_df %>% arrange((Rank)) %>% mutate(Set = gsub("\\s\\(\\)\\s*$","",gsub(" Commander Decks","",gsub(" Variants$","",Set)))) %>% 
+CK_Prices_df <- CK_Prices_df %>% arrange((Rank)) %>% #mutate(Set = gsub("\\s\\(\\)\\s*$","",gsub(" Commander Decks","",gsub(" Variants$","",Set)))) %>% 
   left_join(Sets %>% select(mtgjson,CK_BL_Scrape_Sets), by = c("Set"="CK_BL_Scrape_Sets")) %>% 
   mutate(Set = coalesce(mtgjson,Set),
          #Rank = seq(nrow(CK_Prices_df)), 
@@ -476,18 +527,18 @@ print(paste("CK Best Selling Data Acquisition Lasted:",round(End_Time - Start_Ti
 
 CK_Smaller_List$CK_Rank <- CK_Prices_df$Rank[match(CK_Smaller_List$CK_Key,trimws(CK_Prices_df$key))] #Merge the CK best selling rankings with our original CK Buylist scrape
 Low_Confidence_Report <- CK_Smaller_List
-
+#CK_Smaller_List %>% filter(grepl('Foundations',Set))
 #CK_Smaller_List %>% filter(`NF/F` !="")
 #CK_Smaller_List = Low_Confidence_Report
-#TCG- Market####
+#TCG Market####
 gc()
 Start_Time <- Sys.time()
 A <- 0
-B <- 100
-C <- 100
+B <- 50
+C <- 50
 TCG__Best_Sellers <- NULL
 body <- paste('{
-    "algorithm": "salesrel",
+    "algorithm": "sales_synonym_v2",
         "from": "',A,'",
         "size": "',B,'",
     "context": {
@@ -513,10 +564,10 @@ body <- paste('{
 }',
               sep="")
 A <- B 
-B <- 200
-TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
+B <- 50
+TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false&mpfev=1931e", content_type_json(), body = body)
 TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
-if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(10);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
+if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(1);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
 for(i in 1:C){
   Name <- gsub("\\s\\/\\/.*","",TCG_Results_1[[1]]$results[[i]]$productName)
   Set <- TCG_Results_1[[1]]$results[[i]]$setName
@@ -552,11 +603,11 @@ for(i in 1:C){
   Line_Item <- cbind(Name,Set,Rarity,Number,hasFoil,MKT_EST,Listings,MKT,Product_ID,Direct_Listings,Potential_Direct_Copies,Total_Copies,Max_Quant_Fillable)
   TCG__Best_Sellers <- rbind(TCG__Best_Sellers, Line_Item)
 }
-
-for(i in 1:97){
+i = 1
+for(i in 1:199){
   tryCatch({
     body <- paste('{
-          "algorithm": "salesrel",
+          "algorithm": "sales_synonym_v2",
         "from": "',A,'",
         "size": "',B,'",
               "context": {
@@ -581,13 +632,13 @@ for(i in 1:97){
           }
       }',
                   sep="")
-    A <- A + 100
-    B <- 100
-    C <- 100
-    TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
+    A <- A + 50
+    B <- 50
+    C <- 50
+    TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body)
     TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
     repeat{
-      if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(1);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
+      if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(1);TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
       if((length(TCG_Results_1[[1]]$results) != 0)) break
     }
     for(i in 1:C){
@@ -630,171 +681,14 @@ for(i in 1:97){
   Sys.sleep(.25)
 }
 
-A <- 0
-B <- 100
-C <- 100
-body <- paste('{
-    "algorithm": "salesrel",
-        "from": "',A,'",
-        "size": "',B,'",
-    "context": {
-          "cart": {},
-          "shippingCountry": "US"
-              },
-    "filters": {
-        "range": {},
-        "term": {
-            "printing": [
-            "Foil"
-            ],
-            "productLineName": [
-                "magic"
-            ],
-            "productTypeName": [
-                "Cards"
-            ],
-            "rarityName": [
-                "Mythic",
-                "Uncommon",
-                "Rare"
-            ]
-        }
-    }
-}',
-              sep="")
-A <- B 
-B <- 200
-TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
-TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
-if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(10);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
-i = 1
-for(i in 1:C){
-  Name <- gsub("\\s\\/\\/.*","",TCG_Results_1[[1]]$results[[i]]$productName)
-  Set <- TCG_Results_1[[1]]$results[[i]]$setName
-  Rarity <- TCG_Results_1[[1]]$results[[i]]$customAttributes$rarityDbName
-  Number <- if(identical(as.numeric(str_extract(TCG_Results_1[[1]]$results[[i]]$customAttributes$number,"\\d+")), numeric(0)) ){NA}else{as.numeric(str_extract(TCG_Results_1[[1]]$results[[i]]$customAttributes$number,"\\d+"))}
-  MKT_EST <- NA
-  Listings <-TCG_Results_1[[1]]$results[[i]]$totalListings
-  Max_Quant_Fillable = TCG_Results_1[[1]]$results[[i]]$maxFulfillableQuantity
-  MKT <- ifelse((is.null(TCG_Results_1[[1]]$results[[i]]$lowestPriceWithShipping) == T), 0, TCG_Results_1[[1]]$results[[i]]$lowestPriceWithShipping)
-  Product_ID <- TCG_Results_1[[1]]$results[[i]]$productId
-  Direct_Listings <- 0
-  hasFoil = "FOIL"
-  Total_Copies <- NULL
-  Potential_Direct_Copies <- NULL
-  limit <- if(length(TCG_Results_1[[1]]$results[[i]]$listings) < 3){length(TCG_Results_1[[1]]$results[[i]]$listings)}else{3}
-  if(limit >0){
-    for(j in 1:limit){
-      MKT_EST <- (TCG_Results_1[[1]]$results[[i]]$listings[[j]]$score) + (TCG_Results_1[[1]]$results[[i]]$listings[[j]]$shippingPrice)
-      if(TCG_Results_1[[1]]$results[[i]]$listings[[j]]$sellerRating > 0){
-        Direct_Listings <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$directInventory
-        if(TCG_Results_1[[1]]$results[[i]]$listings[[j]]$directSeller == T){
-          dcopies <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$quantity
-          Potential_Direct_Copies <- rbind(Potential_Direct_Copies,dcopies)}
-        else{
-          Copies <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$quantity
-          Total_Copies <- rbind(Total_Copies,Copies)
-        }
-      }
-    }
-  }
-  Potential_Direct_Copies <- sum(Potential_Direct_Copies)
-  MKT_EST <- round(mean(MKT_EST),2)
-  Total_Copies <- sum(Total_Copies)
-  if(Direct_Listings == 0){Total_Copies <- Total_Copies + Potential_Direct_Copies}
-  Line_Item <- cbind(Name,Set,Rarity,Number,hasFoil,MKT_EST,Listings,MKT,Product_ID,Direct_Listings,Potential_Direct_Copies,Total_Copies,Max_Quant_Fillable)
-  TCG__Best_Sellers <- rbind(TCG__Best_Sellers, Line_Item)
-}
-
-for(i in 1:97){
-  tryCatch({
-    body <- paste('{
-        "algorithm": "salesrel",
-        "from": "',A,'",
-        "size": "',B,'",
-            "context": {
-              "cart": {},
-              "shippingCountry": "US"
-                  },
-        "filters": {
-            "range": {},
-            "term": {
-                "printing": [
-                "Foil"
-                ],
-                "productLineName": [
-                    "magic"
-                ],
-                "productTypeName": [
-                    "Cards"
-                ],
-                "rarityName": [
-                    "Mythic",
-                    "Uncommon",
-                    "Rare"
-                ]
-            }
-        }
-    }',
-                  sep="")
-    A <- A + 100
-    B <- 100
-    C <- 100
-    TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
-    TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
-    repeat{
-      if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(1);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
-      if((length(TCG_Results_1[[1]]$results) != 0)) break
-    }
-    for(i in 1:C){
-      Name <- gsub("\\s\\/\\/.*","",TCG_Results_1[[1]]$results[[i]]$productName)
-      Set <- TCG_Results_1[[1]]$results[[i]]$setName
-      Rarity <- TCG_Results_1[[1]]$results[[i]]$customAttributes$rarityDbName
-      Number <- if(identical(as.numeric(str_extract(TCG_Results_1[[1]]$results[[i]]$customAttributes$number,"\\d+")), numeric(0)) ){NA}else{as.numeric(str_extract(TCG_Results_1[[1]]$results[[i]]$customAttributes$number,"\\d+"))}
-      MKT_EST <- NA
-      Listings <-TCG_Results_1[[1]]$results[[i]]$totalListings
-      Max_Quant_Fillable = TCG_Results_1[[1]]$results[[i]]$maxFulfillableQuantity
-      MKT <- ifelse((is.null(TCG_Results_1[[1]]$results[[i]]$lowestPriceWithShipping) == T), 0, TCG_Results_1[[1]]$results[[i]]$lowestPriceWithShipping)
-      Product_ID <- TCG_Results_1[[1]]$results[[i]]$productId
-      Direct_Listings <- 0
-      hasFoil = "FOIL"
-      Total_Copies <- NULL
-      Potential_Direct_Copies <- NULL
-      limit <- if(length(TCG_Results_1[[1]]$results[[i]]$listings) < 3){length(TCG_Results_1[[1]]$results[[i]]$listings)}else{3}
-      if(limit >0){
-        for(j in 1:limit){
-          MKT_EST <- (TCG_Results_1[[1]]$results[[i]]$listings[[j]]$score) + (TCG_Results_1[[1]]$results[[i]]$listings[[j]]$shippingPrice)
-          if(TCG_Results_1[[1]]$results[[i]]$listings[[j]]$sellerRating > 0){
-            Direct_Listings <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$directInventory
-            if(TCG_Results_1[[1]]$results[[i]]$listings[[j]]$directSeller == T){
-              dcopies <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$quantity
-              Potential_Direct_Copies <- rbind(Potential_Direct_Copies,dcopies)}
-            else{
-              Copies <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$quantity
-              Total_Copies <- rbind(Total_Copies,Copies)
-            }
-          }
-        }
-      }
-      Potential_Direct_Copies <- sum(Potential_Direct_Copies)
-      MKT_EST = round(mean(MKT_EST),2)
-      Total_Copies <- sum(Total_Copies)
-      if(Direct_Listings == 0){Total_Copies <- Total_Copies + Potential_Direct_Copies}
-      Line_Item <- cbind(Name,Set,Rarity,Number,hasFoil,MKT_EST,Listings,MKT,Product_ID,Direct_Listings,Potential_Direct_Copies,Total_Copies,Max_Quant_Fillable)
-      TCG__Best_Sellers <- rbind(TCG__Best_Sellers, Line_Item)
-    }
-    #if(A >= 9990) break
-  }, error = function(e){print("Loop error")})
-  Sys.sleep(.25)
-}
-
 TCG__Best_Sellers <- unique(TCG__Best_Sellers)
 TCG__Best_Sellers <- TCG__Best_Sellers %>% as.data.frame() %>% mutate(Rank = seq(nrow(TCG__Best_Sellers))) %>%
   mutate(Rarity = ifelse(Rarity == "Mythic","M", ifelse(Rarity == "Rare", "R", ifelse(Rarity == "Uncommon", "U", ifelse(Rarity == "Common", "C", Rarity))))) %>%
   mutate(Key = trimws(paste(Name,Set,Rarity,hasFoil,sep=""))) %>% relocate(Key, .before = Name)
 
 #sheets_deauth()
-gs4_auth(email = "pachun95@gmail.com", use_oob = T)
+gs4_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/pachun95_a.json")
+gs4_auth(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/pachun95_service_a.json", use_oob=T,cache=T)
 sheet_write(
   TCG__Best_Sellers,
   ss = "/d/1Ef2FgpR-bOg28a8JetHTTIXFH4FeR3eSEj5wpIAVjlU",
@@ -812,9 +706,9 @@ tryCatch({remDr$findElement('xpath','/html/body/div[5]/div/div/div/div/button/sp
          })
 Sys.sleep(2)
 tryCatch({
-tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
-         error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
-         })}, 
+  tryCatch({remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[2]/div[2]/div[2]')$clickElement()}, 
+           error = function(e){remDr$findElement('xpath','//*[@id="app"]/div/section[2]/section/div[1]/div[2]/div[3]/div[2]/div[2]')$clickElement()
+           })}, 
   error = function(e){print("No Drop Down")})
 Sys.sleep(2)
 
@@ -823,13 +717,14 @@ Sys.sleep(2)
 stacked_text <- NULL
 stacked_qty <- NULL
 page_source = remDr$getPageSource()
-stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes(".checkbox__option-value") %>% html_text() %>% trimws()
-stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric()
+stacked_text <- page_source %>% .[[1]] %>% read_html() %>% html_nodes('.tcg-input-checkbox') %>% html_text()
+stacked_qty = page_source %>% .[[1]] %>% read_html() %>% html_nodes(".search-filter__option-count") %>% html_text() %>% trimws() %>% as.numeric() %>% .[-1]
 Sys.sleep(4)
 
 stacked_text <- cbind(stacked_text,stacked_qty)
 stacked_backup <- stacked_text
 #stacked_text <- stacked_backup
+
 stacked_text <- stacked_text %>% as_tibble() %>% mutate(stacked_qty = as.numeric(stacked_qty))%>% 
   slice(which.max(stacked_text == "Prerelease Cards") : n()) %>% 
   mutate(case = ifelse(stacked_text == "Cards",1,NA)) %>%
@@ -837,7 +732,8 @@ stacked_text <- stacked_text %>% as_tibble() %>% mutate(stacked_qty = as.numeric
   filter(is.na(case)) %>%
   select(-case) %>%
   rename("editions"="stacked_text", "qty"="stacked_qty") %>%
-  mutate(editions = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions)))))))
+  mutate(editions = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions))))))) %>%
+    filter(editions!="magic-the-gathering-apparel")
 
 stacked_text = stacked_text %>% na.omit()
 
@@ -857,8 +753,15 @@ try(for(i in 1:nrow(groupings)){
 groupings[nrow(groupings),2] <- max(groupings$groups, na.rm = T)
 
 stacked_text <- stacked_text %>% mutate(groups = groupings$groups,
-                                        editions = paste('"',editions,'", ',sep=""))
+                                        editions = paste('"',editions,'", ',sep="")) %>%
+  group_by(groups) %>%
+  reframe(editions,qty,id = row_number()) %>%
+  ungroup() %>%
+  mutate(groups = ifelse(id > 90, groups+1,groups))
+
 bb <- stacked_text
+
+group_content = stacked_text %>% group_by(groups) %>% summarize(editions_in_group = n())
 
 json_body_contents = stacked_text %>% 
   group_by(groups) %>% 
@@ -905,10 +808,12 @@ stop_points <- tryCatch({stacked_text %>% group_by(groups) %>%
 q = 1
 All_TCG_Sets <- NULL
 for(q in 1:max(groupings$groups)){
+  
+  b = 1
   tryCatch({
     A <- 0
-    B <- 100
-    C <- 100
+    B <- 50
+    C <- 50
     All_TCG <- NULL
     body <- paste('{
       "algorithm": "salesrel",
@@ -928,17 +833,19 @@ for(q in 1:max(groupings$groups)){
                   "Cards"
               ],
               "setName": [
-                  ',json_body_contents$stringeroonies[q],'
+                  ',json_body_contents %>% select(stringeroonies) %>% pluck(q),'
               ]
           }
       }
   }',
                   sep="")
     A <- B 
-    B <- 200
-    TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
+    B <- 50
+    TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body)
+
     TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
-    if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(10);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
+
+    if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(1);TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
     i = 1
     for(i in 1:C){
       Name <- gsub("\\s\\/\\/.*","",TCG_Results_1[[1]]$results[[i]]$productName)
@@ -976,7 +883,7 @@ for(q in 1:max(groupings$groups)){
       All_TCG <- rbind(All_TCG, Line_Item)
     }
     
-    for(i in 1:(round(stop_points$grp_amts[q],-2)/100)-3) {
+    for(n in 1:((round(stop_points$grp_amts[q],-2)/50)-3) ) {
       body <- paste('{
           "algorithm": "salesrel",
               "context": {
@@ -1001,9 +908,9 @@ for(q in 1:max(groupings$groups)){
           }
       }',
                     sep="")
-      A <- A + 100
-      B <- 100
-      TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
+      A <- A + 50
+      B <- 50
+      TCG_Results <- POST("https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false", content_type_json(), body = body)
       TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
       # repeat{
       #   if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(1);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
@@ -1048,167 +955,6 @@ for(q in 1:max(groupings$groups)){
         All_TCG <- rbind(All_TCG, Line_Item)
         if(A >= round(stop_points$grp_amts[q],-2)) break
         #round(stop_points$grp_amts[q],-2)
-      }
-      #if(A >= 9990) break
-      Sys.sleep(.25)
-    }
-  }, error = function(e){print("Loop error")})
-  All_TCG_Sets <- rbind(All_TCG_Sets,All_TCG)
-}
-for(q in 1:max(groupings$groups)){
-  tryCatch({
-    A <- 0
-    B <- 100
-    C <- 100
-    All_TCG <- NULL
-    body <- paste('{
-      "algorithm": "salesrel",
-      "context": {
-            "cart": {},
-            "shippingCountry": "US"
-                },
-      "from": "',A,'",
-      "size": "',B,'",
-      "filters": {
-          "range": {},
-          "term": {
-              "printing": [
-              "Foil"
-              ],
-              "productLineName": [
-                  "magic"
-              ],
-              "productTypeName": [
-                  "Cards"
-              ],
-              "setName": [
-                  ',json_body_contents$stringeroonies[q],'
-              ]
-          }
-      }
-  }',
-                  sep="")
-    A <- B 
-    B <- 200
-    TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
-    TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
-    if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(10);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
-    i = 1
-    for(i in 1:C){
-      Name <- gsub("\\s\\/\\/.*","",TCG_Results_1[[1]]$results[[i]]$productName)
-      Set <- TCG_Results_1[[1]]$results[[i]]$setName
-      Rarity <- TCG_Results_1[[1]]$results[[i]]$customAttributes$rarityDbName
-      Number <- if(identical(as.numeric(str_extract(TCG_Results_1[[1]]$results[[i]]$customAttributes$number,"\\d+")), numeric(0)) ){NA}else{as.numeric(str_extract(TCG_Results_1[[1]]$results[[i]]$customAttributes$number,"\\d+"))}
-      MKT_EST <- NA
-      Listings <-TCG_Results_1[[1]]$results[[i]]$totalListings
-      Max_Quant_Fillable = TCG_Results_1[[1]]$results[[i]]$maxFulfillableQuantity
-      MKT <- ifelse((is.null(TCG_Results_1[[1]]$results[[i]]$lowestPriceWithShipping) == T), 0, TCG_Results_1[[1]]$results[[i]]$lowestPriceWithShipping)
-      Product_ID <- TCG_Results_1[[1]]$results[[i]]$productId
-      Direct_Listings <- 0
-      hasFoil <- "FOIL"
-      Total_Copies <- NULL
-      Potential_Direct_Copies <- NULL
-      limit <- if(length(TCG_Results_1[[1]]$results[[i]]$listings) < 3){length(TCG_Results_1[[1]]$results[[i]]$listings)}else{3}
-      if(limit >0){
-        for(j in 1:limit){
-          MKT_EST <- (TCG_Results_1[[1]]$results[[i]]$listings[[j]]$score) + (TCG_Results_1[[1]]$results[[i]]$listings[[j]]$shippingPrice)
-          if(TCG_Results_1[[1]]$results[[i]]$listings[[j]]$sellerRating > 0){
-            Direct_Listings <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$directInventory
-            if(TCG_Results_1[[1]]$results[[i]]$listings[[j]]$directSeller == T){
-              dcopies <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$quantity
-              Potential_Direct_Copies <- rbind(Potential_Direct_Copies,dcopies)}
-            else{
-              Copies <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$quantity
-              Total_Copies <- rbind(Total_Copies,Copies)
-            }
-          }
-        }
-      }
-      Potential_Direct_Copies <- sum(Potential_Direct_Copies)
-      MKT_EST <- round(mean(MKT_EST),2)
-      Total_Copies <- sum(Total_Copies)
-      if(Direct_Listings == 0){Total_Copies <- Total_Copies + Potential_Direct_Copies}
-      Line_Item <- cbind(Name,Set,Rarity,Number,hasFoil,MKT_EST,Listings,MKT,Product_ID,Direct_Listings,Potential_Direct_Copies,Total_Copies,Max_Quant_Fillable)
-      All_TCG <- rbind(All_TCG, Line_Item)
-    }
-    
-    for(i in 1:(round(stop_points$grp_amts[q],-2)/100)-3) {
-      body <- paste('{
-          "algorithm": "salesrel",
-              "context": {
-                "cart": {},
-                "shippingCountry": "US"
-                    },
-          "from": "',A,'",
-          "size": "',B,'",
-          "filters": {
-              "range": {},
-              "term": {
-                  "printing": [
-                  "Foil"
-                  ],
-                  "productLineName": [
-                      "magic"
-                  ],
-                  "productTypeName": [
-                      "Cards"
-                  ],
-                  "setName": [
-                  ',json_body_contents$stringeroonies[q],'
-              ]
-              }
-          }
-      }',
-                    sep="")
-      A <- A + 100
-      B <- 100
-      TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body)
-      TCG_Results_1 <- (content(TCG_Results,"parsed"))$results
-      # repeat{
-      #   if(length(TCG_Results_1[[1]]$results) == 0){Sys.sleep(1);TCG_Results <- POST("https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false", content_type_json(), body = body); TCG_Results_1 <- (content(TCG_Results,"parsed"))$results}
-      #   if((length(TCG_Results_1[[1]]$results) != 0)) break
-      # }
-      C = length(TCG_Results_1[[1]]$results)
-      if(C == 0)break
-      for(i in 1:C){
-        Name <- gsub("\\s\\/\\/.*","",TCG_Results_1[[1]]$results[[i]]$productName)
-        Set <- TCG_Results_1[[1]]$results[[i]]$setName
-        Rarity <- TCG_Results_1[[1]]$results[[i]]$customAttributes$rarityDbName
-        Number <- if(identical(as.numeric(str_extract(TCG_Results_1[[1]]$results[[i]]$customAttributes$number,"\\d+")), numeric(0)) ){NA}else{as.numeric(str_extract(TCG_Results_1[[1]]$results[[i]]$customAttributes$number,"\\d+"))}
-        MKT_EST <- NA
-        Listings <-length(TCG_Results_1[[1]]$results[[i]]$listings)
-        Listings <-TCG_Results_1[[1]]$results[[i]]$totalListings
-        Max_Quant_Fillable = TCG_Results_1[[1]]$results[[i]]$maxFulfillableQuantity
-        MKT <- ifelse((is.null(TCG_Results_1[[1]]$results[[i]]$lowestPriceWithShipping) == T), 0, TCG_Results_1[[1]]$results[[i]]$lowestPriceWithShipping)
-        Product_ID <- TCG_Results_1[[1]]$results[[i]]$productId
-        Direct_Listings <- 0
-        hasFoil <- "FOIL"
-        Total_Copies <- NULL
-        Potential_Direct_Copies <- NULL
-        limit <- if(length(TCG_Results_1[[1]]$results[[i]]$listings) < 3){length(TCG_Results_1[[1]]$results[[i]]$listings)}else{3}
-        if(limit >0){
-          for(j in 1:limit){
-            MKT_EST <- (TCG_Results_1[[1]]$results[[i]]$listings[[j]]$score) + (TCG_Results_1[[1]]$results[[i]]$listings[[j]]$shippingPrice)
-            if(TCG_Results_1[[1]]$results[[i]]$listings[[j]]$sellerRating > 0){
-              Direct_Listings <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$directInventory
-              if(TCG_Results_1[[1]]$results[[i]]$listings[[j]]$directSeller == T){
-                dcopies <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$quantity
-                Potential_Direct_Copies <- rbind(Potential_Direct_Copies,dcopies)}
-              else{
-                Copies <- TCG_Results_1[[1]]$results[[i]]$listings[[j]]$quantity
-                Total_Copies <- rbind(Total_Copies,Copies)
-              }
-            }
-          }
-        }
-        Potential_Direct_Copies <- sum(Potential_Direct_Copies)
-        MKT_EST <- round(mean(MKT_EST),2)
-        Total_Copies <- sum(Total_Copies)
-        if(Direct_Listings == 0){Total_Copies <- Total_Copies + Potential_Direct_Copies}
-        Line_Item <- cbind(Name,Set,Rarity,Number,hasFoil,MKT_EST,Listings,MKT,Product_ID,Direct_Listings,Potential_Direct_Copies,Total_Copies,Max_Quant_Fillable)
-        All_TCG <- rbind(All_TCG, Line_Item)
-        if(A >= round(stop_points$grp_amts[q],-2)) break
-        #round(stop_points$grp_amts[q],-2)/100)-3
       }
       #if(A >= 9990) break
       Sys.sleep(.25)
@@ -1269,22 +1015,27 @@ TCG <- TCG %>% mutate(MKT_EST = as.numeric(MKT_EST)) %>% mutate(`Vendor Listings
 Vendor <- as.data.frame(TCG)
 TCG_Vendor <- Vendor
 Middle_Confidence_Report <- TCG_Vendor
-TCG_Export = TCG
+TCG_Export = TCG %>% mutate(Primary_Key = gsub("( \\(Borderless\\)| \\(Extended Art\\)| \\(Showcase\\)| \\(Surge Foil\\))","",Primary_Key))
 
 
 Sets_V2 <- Sets[c(1:6)] %>% `colnames<-` (c("mtgjson","CK_BL_Scrape_Sets","MTG_Goldfish_Sets","GF_Abbr","GF_Abbr_Foil","TCG_Key"))
 
 
-TCG_Export <- TCG_Export %>% mutate(Set = Sets_V2$mtgjson[match(Set,Sets_V2$TCG_Key)], number = Updated_Tracking_Keys$number[match(Product_ID,Updated_Tracking_Keys$param)]) %>% mutate(Primary_Key = trimws(paste(Card_Name,Set, Rarity, hasFoil, sep = "")))
+TCG_Export <- TCG_Export %>% mutate(Set = Sets_V2$mtgjson[match(Set,Sets_V2$TCG_Key)], number = Updated_Tracking_Keys$number[match(Product_ID,Updated_Tracking_Keys$param)]) %>% mutate(Primary_Key = trimws(paste(gsub("( \\(Borderless\\)| \\(Extended Art\\)| \\(Showcase\\)| \\(Surge Foil\\))","",Card_Name),Set, Rarity, hasFoil, sep = "")))
 
 TCG_Export$number_key = trimws(paste(Updated_Tracking_Keys$abbr[match(TCG_Export$Product_ID,Updated_Tracking_Keys$param)],"-",TCG_Export$number,TCG_Export$hasFoil,sep=""))
 
 TCG_Export <- TCG_Export %>% filter(!is.na(Set))
 
+
 CK_Smaller_List$param <- ifelse(is.na(CK_Smaller_List$param), Updated_Tracking_Keys$param[match(CK_Smaller_List$ckid,Updated_Tracking_Keys$ckid_f)], CK_Smaller_List$param)
 CK_Smaller_List$param <- ifelse(is.na(CK_Smaller_List$param), Updated_Tracking_Keys$param[match(paste(CK_Smaller_List$Set,CK_Smaller_List$number,sep=""),paste(Updated_Tracking_Keys$Set,Updated_Tracking_Keys$number,sep=""))], CK_Smaller_List$param)
 
-#CK_Smaller_List %>% filter(`NF/F` !="")
+CK_Smaller_List$uuid <- ifelse(is.na(CK_Smaller_List$uuid), Updated_Tracking_Keys$uuid[match(CK_Smaller_List$ckid,Updated_Tracking_Keys$ckid_f)], CK_Smaller_List$uuid)
+CK_Smaller_List$uuid <- ifelse(is.na(CK_Smaller_List$uuid), Updated_Tracking_Keys$uuid[match(paste(CK_Smaller_List$Set,CK_Smaller_List$number,sep=""),paste(Updated_Tracking_Keys$Set,Updated_Tracking_Keys$number,sep=""))], CK_Smaller_List$uuid)
+
+
+
 bbb = CK_Smaller_List
 
 CK_Smaller_List <- CK_Smaller_List %>% mutate(CK_Key = trimws(CK_Key)) %>% 
@@ -1296,7 +1047,8 @@ CK_Smaller_List <- CK_Smaller_List %>% mutate(CK_Key = trimws(CK_Key)) %>%
       (grepl("^FMB1",left(number_key,3))==T) |
       (grepl("^FNM",left(number_key,3))==T) |
       (grepl("^FRF",left(number_key,3))==T) |
-      (grepl("^FUT",left(number_key,3))==T), number_key, paste(gsub("^F","",number_key),`NF/F`,sep="") )) %>%
+      (grepl("^FUT",left(number_key,3))==T)|
+      (grepl("^FDN",left(number_key,3))==T), number_key, paste(gsub("^F","",number_key),`NF/F`,sep="") )) %>%
   mutate(TCG_Rank = TCG_Export$Rank[match(param,TCG_Export$Product_ID)]) %>%
   mutate(TCG_Price = TCG_Export$MKT_EST[match(number_key,TCG_Export$number_key)]) %>% distinct()#,
 #TCG_Price = ifelse(`NF/F` == "FOIL", TCG_Export$MKT_EST[match(paste(TCG_Export$Product_ID,"-",TCG_Export$hasFoil,sep=""),
@@ -1311,7 +1063,6 @@ CK_Smaller_List$TCG_Price <- ifelse(CK_Smaller_List$Exclusion == "Exclude", TCG_
 
 
 #Pricing %>% filter(`Card Name` =="Archfiend of Despair")
-
 Pricing <- CK_Smaller_List %>% mutate(MKT_Est = ifelse((`NF/F` == "FOIL") & TCG_Price <= (.80 * Gold_Market) , Gold_Market,ifelse((is.na(TCG_Price)==T),Gold_Market,TCG_Price))) %>%
   mutate(BL_Value = as.numeric(BL_Value)) %>% mutate(Arbit = round(ifelse(is.na(MKT_Est) != TRUE,(BL_Value - MKT_Est),0),2)) %>% replace_na(list(Arbit = 0)) %>%
   mutate(CK_MKT = CK_Prices_df$Price[match(as.factor(trimws(CK_Key)),as.factor(trimws(CK_Prices_df$key)))]) %>% mutate(CK_Rank = as.numeric(CK_Rank)) %>% mutate(TCG_Rank = as.numeric(TCG_Rank))
@@ -1329,8 +1080,14 @@ Pricing <- Pricing %>% mutate(CK_Rank = ifelse(CK_Rank == 0,Worst_CK_Rank,CK_Ran
 
 #TCG_Export$ckid <- Updated_Tracking_Keys$ckid[match(TCG_Export$Product_ID,Updated_Tracking_Keys$param)]
 
-Ranking <- Pricing %>% mutate(CK_Rank = round(((CK_MKT/Anchor_CK_price)*CK_Rank),5)) %>% mutate(CK_Rank = ifelse(CK_Rank == 0,NA,CK_Rank)) %>% replace_na(list(CK_Rank = Worst_CK_Rank)) %>% arrange(CK_Rank) %>%
-  mutate(CK_Rank = seq(nrow(Pricing))) %>% replace_na(list(TCG_Rank = Worst_CK_Rank)) %>% mutate(Weighted_Rank = round(ifelse(((is.na(CK_Rank) != TRUE) & (is.na(TCG_Rank) != TRUE)), (((CK_Rank*.0818)+(TCG_Rank*.5568)/(.5568+.0818))),ifelse(((is.na(CK_Rank) != TRUE) & (is.na(TCG_Rank) = TRUE)),CK_Rank,ifelse(((is.na(CK_Rank) = TRUE) & (is.na(TCG_Rank) != TRUE)),TCG_Rank,40001))),2)) %>%
+Ranking <- Pricing %>% 
+  mutate(CK_Rank = round(((CK_MKT/Anchor_CK_price)*CK_Rank),5)) %>% 
+  mutate(CK_Rank = as.numeric(ifelse(CK_Rank == 0,NA,CK_Rank))) %>% 
+  replace_na(list(CK_Rank = Worst_CK_Rank)) %>% 
+  arrange(CK_Rank) %>%
+  mutate(CK_Rank = seq(nrow(Pricing))) %>% 
+  replace_na(list(TCG_Rank = Worst_CK_Rank)) %>% 
+  mutate(Weighted_Rank = round(ifelse(((is.na(CK_Rank) != TRUE) & (is.na(TCG_Rank) != TRUE)), (((CK_Rank*.0818)+(TCG_Rank*.5568)/(.5568+.0818))),ifelse(((is.na(CK_Rank) != TRUE) & (is.na(TCG_Rank) = TRUE)),CK_Rank,ifelse(((is.na(CK_Rank) = TRUE) & (is.na(TCG_Rank) != TRUE)),TCG_Rank,40001))),2)) %>%
   arrange(Weighted_Rank) %>% mutate(Demand_Pct_Conf = round(ifelse(((round(MKT_Est,2) == round(Pricing$TCG_Price,2)) & (is.na(TCG_Rank) != TRUE) & (CK_Rank < Worst_CK_Rank)), 64,ifelse(((MKT_Est = Pricing$TCG_Price) & (is.na(TCG_Rank) != TRUE)),56,ifelse((CK_Rank < Worst_CK_Rank),8,0))),0)) %>%
   arrange(Weighted_Rank) %>% mutate(Weighted_Rank = seq(nrow(Pricing))) %>% mutate(Vendor = TCG_Export$`Vendor Listings`[match(param,trimws(TCG_Export$Product_ID))]) %>% 
   mutate(TCG_Rank = ifelse(TCG_Rank == Worst_CK_Rank, NA,TCG_Rank ))
@@ -1352,13 +1109,15 @@ Final_Export <- Final_Export %>% mutate(CK_MKT = Ranking$CK_MKT[match(CK_Key,Ran
   mutate(MKT_TS_Single = round((MKT * 1.08875)+.78,2)) %>% mutate(MKT_TS_Set = round(((MKT * 4)* 1.08875)+.78,2)) %>%
   mutate(`Single_Arb_%` = round((BL - MKT_TS_Single)/MKT_TS_Single,2)) %>% mutate(`Set_Arb_%` = round(((BL*4) - MKT_TS_Set)/MKT_TS_Set,2)) %>%
   arrange(desc(`Single_Arb_%`)) %>% mutate(Exclusion = Exclusion$Excl_Excl[match(Set,Exclusion$Set_Excl)]) %>%
-  mutate(Sellers = as.numeric(Sellers)) %>% filter(!is.na(MKT))
+  mutate(Sellers = as.numeric(Sellers)) %>% 
+    filter(!is.na(MKT))
+
 
 #Personal Recommended View
 #Final_Export %>% filter(`F/NF` == "") %>% filter(Exclusion != "Exclude") %>% filter(Sellers != "") %>% arrange(desc(`Set_Arb_%`)) %>% filter(Rarity == "M" |Rarity == "R") %>% filter(BL > 5.00)
 #Export Premium & TCG####
 gc()
-con <- gaeas_cradle("wolfoftinstreet@gmail.com")
+con <- gaeas_cradle()
 currentDate <- Sys.Date()
 #summary(Final_Export$Sellers)
 premium_bq_export <- tryCatch({Final_Export[c(1:15)] %>% mutate(Date = currentDate)}, error = function(e){Final_Export[c(1:15)]  %>% mutate(Date = currentDate)})
@@ -1375,8 +1134,6 @@ bq_table_upload(x=mybq, values = premium_bq_export, fields=as_bq_fields(premium_
 print("BQ Premium Upload Successful!")
 
 
-#premium_bq_export %>% filter(Card =="Archfiend of Despair")
-
 tcgplayer_bq_export <- tryCatch({TCG_Vendor %>% rename(c("Vendors" = "Vendor Listings")) %>% mutate(Vendors = as.numeric(Vendors)) %>% select(Product_ID,hasFoil,MKT_EST,Vendors,MKT,Rank,Direct_Listings,Potential_Direct_Copies,Total_Copies)},error = function(e){TCG_Vendor %>% rename(c("Vendor Listings" = "Vendors")) %>% mutate(Vendors = as.numeric(Vendors)) %>% select(Product_ID,hasFoil,MKT_EST,Vendors,MKT,Rank,Direct_Listings,Potential_Direct_Copies,Total_Copies)})
 mybq <- bq_table(project = "gaeas-cradle", dataset = "tcgplayer", table = paste(gsub("-","_",currentDate),"_TCGPLAYER",sep=""))
 bq_table_upload(x=mybq, values = tcgplayer_bq_export, fields=as_bq_fields(tcgplayer_bq_export),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
@@ -1388,10 +1145,22 @@ print("BQ TCG Upload Successful!")
 #csvFileName <- paste(currentDate,"_Basic",".csv",sep="")
 #write.csv(Basic_Market_Review, file=csvFileName, row.names = FALSE)
 #Funny Money Report####
-CK_Price_Comparison <- CK_Prices_df %>% mutate(key = trimws(key)) %>% mutate(TCG_Price = as.numeric(Final_Export$MKT[match(key,Final_Export$Key)])) %>%
+# Sets
+# 
+# Final_Export %>% filter(grepl('Sword of Forge and Frontier',Card))
+# 
+# CK_Prices_df %>% 
+#     left_join(Sets %>% select(CK_BL_Scrape_Sets,mtgjson),by=c('mtgjson'='mtgjson'))%>% 
+#     filter(grepl('All Will Be One Promos',mtgjson)) %>%
+#     mutate(key = paste0(Card,CK_BL_Scrape_Sets,Rarity))
+
+CK_Price_Comparison <- CK_Prices_df %>% 
+    left_join(Sets %>% select(CK_BL_Scrape_Sets,mtgjson),by=c('mtgjson'='mtgjson'))%>% 
+    mutate(key = paste0(Card,CK_BL_Scrape_Sets,Rarity))%>% 
+    mutate(key = trimws(key)) %>% mutate(TCG_Price = as.numeric(Final_Export$MKT[match(key,Final_Export$Key)])) %>%
   mutate(CK_TCG_PCT_DIFF = round(as.numeric(as.character(Price))/TCG_Price,4)) %>% 
   select(key, Card, Set,Rarity,TCG_Price,Price) %>% `colnames<-` (c("Key","Card_Name","Set","Rarity","TCG_Price","CK_Price")) %>%
-  mutate(TCG_Price = ifelse(TCG_Price == 0.00,NA, TCG_Price)) %>%
+  mutate(TCG_Price = ifelse(TCG_Price == 0.00,NA, TCG_Price)) %>% 
   na.omit() %>% mutate(Price_Diff = round((CK_Price-TCG_Price),2)) %>%
   mutate(Price_Diff =  ifelse(Price_Diff == CK_Price, "Not Captured", Price_Diff)) %>%
   filter(Price_Diff != "Not Captured") %>%
@@ -1402,7 +1171,7 @@ CK_Price_Comparison <- CK_Prices_df %>% mutate(key = trimws(key)) %>% mutate(TCG
   mutate(TCG_Vendors = Final_Export$Sellers[match(Key,Final_Export$Key)]) %>%
   mutate(BL_Desired_Amt = Final_Export$BL_QTY[match(Key,Final_Export$Key)]) %>%
   mutate(`F/NF` = "") %>% select(Key, Card_Name, Set, Rarity, `F/NF`,BL_Desired_Amt,CK_BL,TCG_Price,CK_Price,Price_Diff,TCG_Vendors,CK_BL_Backing,TCG_BL_Backing,Set_Group) %>%
-  `colnames<-` (c("Key","Card","Set","Rarity","F/NF","BL_QTY","BL","TCG_MKT","CK_MKT","MKT_Diff","Sellers","CK_MKT_%","TCG_MKT_%","Group"))
+  `colnames<-` (c("Key","Card","Set","Rarity","F/NF","BL_QTY","BL","TCG_MKT","CK_MKT","MKT_Diff","Sellers","CK_MKT_%","TCG_MKT_%","Group")) %>% distinct()
 
 
 Funny_Money_Analysis <- CK_Price_Comparison %>% #filter(Group != "Exclude") %>% 
@@ -1438,7 +1207,7 @@ print("BQ CK_Funny_Money Upload Successful!")
 #View(Final_Export)
 gc()
 currentDate <- Sys.Date()
-con <- gaeas_cradle("wolfoftinstreet@gmail.com")
+con <- gaeas_cradle()
 
 statement <- paste(
   "SELECT rtrim(Key) as Key, Card, a.Set, Rarity, BL_QTY, BL, MKT, Arb, Sellers, TCG_Rank, CK_ADJ_Rank   ",
@@ -1499,7 +1268,7 @@ Consistent_BuyLists <- BuyList_Growth
 
 #View(Consistent_BuyLists)
 #View(BuyList_Growth)
-con <- gaeas_cradle("wolfoftinstreet@gmail.com")
+con <- gaeas_cradle()
 
 tryCatch({
   statement <- paste(
@@ -1638,7 +1407,7 @@ for( i in 1:nrow(Consistent_Vendors)){
 na_count <- as.data.frame(na_count)
 colnames(na_count) <- "count"
 Consistent_Vendors_Export <- Consistent_Vendors_Export %>% mutate(na_count = na_count$count) %>% filter(na_count <= 5)
-
+Consistent_Vendors_Export %>% arrange(desc(Week_Ago_Sellers_Chg)) %>% filter(grepl('Seismic Monstrosaur',Unique_Keys))
 
 Title_Date <- gsub("\\-","\\_",currentDate)
 mybq <- bq_table(project = "gaeas-cradle", dataset = "vendor_growth", table = paste(Title_Date,"_vendor_growth",sep=""))
@@ -1675,7 +1444,7 @@ CB_Short_NF <- CB_Short %>% filter(CB_Short$Foil != "FOIL") %>%
 
 #CB_Short_NF$Growth <- ifelse((CB_Short_NF$Yesterday_BL > CB_Short_NF$Week_Ago_BL & CB_Short_NF$Week_Ago_BL > CB_Short_NF$Month_Ago_BL), "Yes", ifelse(((CB_Short_NF$Yesterday_BL > CB_Short_NF$Week_Ago_BL & CB_Short_NF$Week_Ago_BL < CB_Short_NF$Month_Ago_BL)|(CB_Short_NF$Yesterday_BL < CB_Short_NF$Week_Ago_BL & CB_Short_NF$Week_Ago_BL > CB_Short_NF$Month_Ago_BL)), "Mixed", "No"))
 #View(CB_Short_NF)
-con <- gaeas_cradle("wolfoftinstreet@gmail.com")
+con <- gaeas_cradle()
 
 statement <- paste(
   "SELECT *   ",
@@ -1725,9 +1494,11 @@ Relaxed_CB_CK_Final <- CB_CK_Final[which(CB_CK_Final$Yesterday_BL_Accel > 0),]
 
 #Google Sheets For Easy Communication####
 options(httr_oob_default=TRUE) 
-options(gargle_oauth_email = "pachun95@gmail.com")
-drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
-gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+
+drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+# Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
+gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
 gc()
 #drive_create("TCG_Review")
 #ss <- drive_get("Market_Review")
@@ -1769,25 +1540,31 @@ gc()
 #   ss = ss,
 #   sheet = "Vendors"
 # )
-
-ss <- drive_get("Wolfs_Warrens")
-#sheets_deauth()
-sheet_write(
-  Relaxed_CB_CK_Final,
-  ss = ss,
-  sheet = "Relaxed"
-)
-sheet_write(
-  Goldilocks_CB_CK_Final,
-  ss = ss,
-  sheet = "Goldilocks"
-)
-sheet_write(
-  Stringent_CB_CK_Final,
-  ss = ss,
-  sheet = "Stringent"
-)
-
+try({
+    ss <- drive_get("Wolfs_Warrens")
+    #sheets_deauth()
+    if(nrow(Relaxed_CB_CK_Final)>0){
+        sheet_write(
+          Relaxed_CB_CK_Final %>% mutate_all(~ifelse(is.infinite(.), NA_real_, .)),
+          ss = ss,
+          sheet = "Relaxed"
+        )
+    }
+    if(nrow(Goldilocks_CB_CK_Final)>0){
+        sheet_write(
+            Goldilocks_CB_CK_Final %>% mutate_all(~ifelse(is.infinite(.), NA_real_, .)),
+          ss = ss,
+          sheet = "Goldilocks"
+        )
+    }
+    if(nrow(Stringent_CB_CK_Final)>0){
+        sheet_write(
+            Stringent_CB_CK_Final %>% mutate_all(~ifelse(is.infinite(.), NA_real_, .)),
+          ss = ss,
+          sheet = "Stringent"
+        )
+    }
+})
 # ss <- drive_get("Bills & MTG 2020")
 # sheet_write(
 #   Final_Export,
@@ -1805,7 +1582,7 @@ sheet_write(
 
 #Metric Aggregation####
 gc()
-con <- gaeas_cradle("wolfoftinstreet@gmail.com")
+con <- gaeas_cradle()
 currentDate <- Sys.Date()
 ThreeWeekDate <- Sys.Date() - 22
 statement <- paste("SELECT DISTINCT Key ","FROM `gaeas-cradle.premiums.*` a ",'WHERE _TABLE_SUFFIX BETWEEN ',
@@ -1917,12 +1694,17 @@ OVR_KPI_DF <- Unique_Combined_Upper_Esch %>%
 
 
 #Export
-drive_auth(email = "pachun95@gmail.com", use_oob=TRUE)
-gs4_auth(email = "pachun95@gmail.com", use_oob=TRUE)
+options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+
+drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+# Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
+gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gc()
 
 ss <- drive_get("Master_KPI_Review")
 
-gs4_auth(email = "pachun95@gmail.com")
+gs4_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/pachun95_a.json")
+gs4_auth(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/pachun95_service_a.json", use_oob=T,cache=T)
 sheet_write(
   OVR_KPI_DF,
   ss = ss,
@@ -1938,7 +1720,7 @@ print("BQ_KPI_TRANSFER_COMPLETE!!")
 #setwd("/home/cujo253/mines_of_moria/Funny Money/")
 gc()
 currentDate <- Sys.Date()
-con <- gaeas_cradle("wolfoftinstreet@gmail.com")
+con <- gaeas_cradle()
 
 CK_Market__Tracker <- Updated_Tracking_Keys %>% select(Key)
 TCG_Market_Tracker <- Updated_Tracking_Keys %>% select(Key)
@@ -1995,7 +1777,21 @@ Three_Week_CK$TCG_Retail<- TCG_Market_Tracker[,ncol(CK_Market__Tracker)][match(T
 
 One_Week_CK$CK_Retail<- CK_Market__Tracker[,ncol(CK_Market__Tracker)][match(One_Week_CK$Key,CK_Market__Tracker$Key)]
 One_Week_CK$TCG_Retail<- TCG_Market_Tracker[,ncol(CK_Market__Tracker)][match(One_Week_CK$Key, TCG_Market_Tracker$Key)]
-Ignore_Most_Recent_Set <- Sets[nrow(Sets),]$Set_Excl
+
+options(httr_oob_default=TRUE) 
+options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+
+drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+# Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
+gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gc()
+#drive_create("TCG_Review")
+ss <- drive_get("Sets")
+
+Sets <- read_sheet(ss,"Sets") %>% mutate_if(is.character,as.factor)
+
+set_subset = Sets %>% janitor::clean_names() %>% select(set_excl, excl_excl, releases) %>% filter(releases > 0)
+Ignore_Most_Recent_Set <- set_subset[nrow(set_subset),]$set_excl
 Cards_In_Most_Recent_Set <- Updated_Tracking_Keys[which(Updated_Tracking_Keys$Set == Ignore_Most_Recent_Set),]
 library(reshape2)
 CK_Inv <- fromJSON("https://api.cardkingdom.com/api/pricelist") %>% 
@@ -2044,13 +1840,20 @@ Market_Comparison <- tryCatch({data.frame(All = AT_CK$Key,Three_Week = Three_Wee
                       CK_Buylist_Offer = as.numeric(CK_Inv$data.price_buy[match(Key,CK_Inv$CK_Key)]))
            })
 
-gs4_auth(email = "pachun95@gmail.com")
-drive_auth(email = "pachun95@gmail.com")
+options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+
+drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+# Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
+gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
 ss <- drive_get("CK_VS_TCG_Review")
-#sheet_write(Market_Comparison,ss = ss,sheet = "Market_Comparisons")
+sheet_write(Market_Comparison,ss = ss,sheet = "Market_Comparisons")
 
 Comparison_Export <- Market_Comparison %>% mutate(Param = Updated_Tracking_Keys$param[match(Key, Updated_Tracking_Keys$Key)]) %>% select(Param,everything()) %>% select(!Name) %>% select(!Set) %>% select(!Rarity)
 mybq <- bq_table(project = "gaeas-cradle", dataset = "ck_retail_review", table = paste(gsub("-","_",currentDate),"_CK_VS_MARKET",sep=""))
 bq_table_upload(x=mybq, values = Comparison_Export, fields=as_bq_fields(Comparison_Export),nskip = 1, source_format = "CSV",create_disposition = "CREATE_IF_NEEDED", write_disposition = "WRITE_TRUNCATE")
 print("BQ TCG Upload Successful!")
+
+
+#Sexy unending -----------------------------------------------------------
+
 

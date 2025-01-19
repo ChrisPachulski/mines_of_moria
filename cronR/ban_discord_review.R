@@ -1,4 +1,4 @@
-pacman::p_load(tidyverse,lubridate,anytime,hms,ggrepel,stringi,ggplot2,textclean)
+pacman::p_load(tidyverse,lubridate,anytime,hms,ggrepel,stringi,ggplot2,textclean,tidymodels,textrecipes)
 setwd("/home/cujo253/mines_of_moria/ban_logs/logs/")
 options(scipen=999)
 clean_server_data = function(server_data){
@@ -10,7 +10,7 @@ clean_server_data = function(server_data){
         mutate(Time = as_hms((parse_date_time(Time, "%I:%M %p"))))
     return(cleanse)
 }
-
+'%!in%' <- function(x,y)!('%in%'(x,y))
 tool_unique_card_search = function(server_data){
     unique_searches = server_data %>% 
         filter(grepl("server-dump",channel)) %>%
@@ -139,8 +139,7 @@ card_searches %>%
     arrange(desc(site_queries)) %>%
     mutate(identity = ifelse(grepl("(starcitygames|coolstuffinc)",domain),"Vendor","Individual User")) %>%
     #select(-user,-domain) %>%
-    head(25) %>% 
-    view()
+    head(25) 
     
 
 
@@ -152,11 +151,12 @@ discord_review = clean_discord_only()
 #discord_review %>%select(category) %>% distinct() %>% view()
 
 category_posts = discord_review %>% 
+    mutate(mon = month(Date),yr = year(Date)) %>%
     filter(channel != "server-dump") %>%
-    group_by(category) %>%
+    group_by(category,yr,mon) %>%
     summarize(total_posts = n()) %>%
     ungroup() %>%
-    arrange(desc(total_posts))
+    arrange(desc(yr),mon,desc(total_posts))
 
 channel_posts = discord_review %>%
     filter(channel != "server-dump") %>%
@@ -165,12 +165,13 @@ channel_posts = discord_review %>%
     summarize(total_posts = n()) %>%
     ungroup() %>%
     arrange(desc(total_posts))
-
+channel_posts %>% filter(grepl("auction",channel)) %>% view()
 
 # Magic Discord Only ------------------------------------------------------
-for(q in 1:length(unique(discord_review$category))){
+for(q in 78:length(unique(discord_review$category))){
    
     category_selection = tolower(unique(discord_review$category)[q])
+
     
     if(grepl("not public",category_selection)){next}
     if(grepl("evolution",category_selection)){next}
@@ -197,6 +198,7 @@ for(q in 1:length(unique(discord_review$category))){
         summarize(total_posts = n()) %>%
         ungroup() %>%
         arrange(desc(Date),desc(total_posts)) 
+    
     
     latest_values = ovr_category_view %>%
         filter(Date == max(Date)) %>% .[1:3,]
@@ -237,37 +239,30 @@ for(q in 1:length(unique(discord_review$category))){
         theme(plot.title = element_text(hjust = 0.5)))
 }
 
-
-
-
-
-
-
-
-
 ovr_user %>% filter(grepl("(coolstuffinc|starcitygames)",domain)==F ) #%>% view()
 
 
-card_searches %>% 
+cards_of_interest = card_searches %>% 
     mutate(month = month(Date))%>%
-    filter(grepl("(coolstuffinc)",domain)==T ) %>%
-    filter(Date >= "2021-02-01") %>%
-    group_by(month,card) %>%
-    summarize(ct = n()) %>%
+    #filter(grepl("(coolstuffinc)",domain)==T ) %>%
+    filter(Date >= "2021-01-01") %>%
+    group_by(user, card) %>%
+    summarize(ct = n(),
+              min_date = min(Date),
+              max_date = max(Date)) %>%
     ungroup() %>%
     arrange(desc(ct)) %>%
-    filter(month == 8)
+    filter(ct >= 2)
 
-
-ovr_avg_user_card_tbl %>%
-    left_join(ovr_vendors_card_tbl,by=c("card"="card"))
-
+unique_card_searches = card_searches %>% filter(card %in% cards_of_interest$card )
 pass_tbl = NULL
+
+
 
 unique_cards = unique_card_searches %>%
     filter(grepl("\\/search",user)==F) %>%
     select(card) %>% distinct()
-
+i = 1
 for (i in 1:nrow(unique_cards)){
     pass_fail_prep = unique_card_searches %>%
         filter(grepl("\\/search",user)==F) %>%
@@ -293,8 +288,6 @@ for (i in 1:nrow(unique_cards)){
 
 tested_card_searches = unique_card_searches %>% left_join(pass_tbl %>% as_tibble(),by=c("card"="V1")) %>% rename(pass_status = V2)
 
-
-tested_card_searches %>% filter(grepl("jacob",user)) %>% select(user) %>% distinct()
 
 searches_by_month_tbl = tested_card_searches %>%
     filter(grepl("(coolstuffinc|starcitygames)",domain)==F ) %>%
@@ -402,7 +395,7 @@ ggplot(all_vendor_searches_tbl, aes(x=month,y=value)) +
 
 # Newspaper Usage Rates --------------------------------------------------------
 
-newspaper_unique_card_searches = server_data_date_cleansed_tbl %>% 
+newspaper_unique_card_searches = discord_review %>% 
     mutate(Content = as.character(as.factor(Content))) %>% 
     separate(Content,c("card","user_details"),sep = " from ") %>% 
     arrange(desc(Date)) %>% 
@@ -414,10 +407,11 @@ newspaper_unique_card_searches = server_data_date_cleansed_tbl %>%
     select(-Attachments,-Reactions) 
 
 
-unique_card_searches %>% nrow()
-newspaper_unique_card_searches %>% nrow() 
+
+newspaper_unique_card_searches %>%  nrow()
 
 newspaper_ovr_user = newspaper_unique_card_searches %>%
+    filter(!grepl("newspaper",user)) %>%
     mutate(month = floor_date(Date,unit="month")) %>%
     group_by(user,month) %>%
     summarize(cards_searched = n()) %>%
@@ -425,12 +419,19 @@ newspaper_ovr_user = newspaper_unique_card_searches %>%
     arrange(desc(cards_searched)) %>% drop_na()
 
 newspaper_ovr_month = newspaper_unique_card_searches %>%
+    filter(!grepl("newspaper",user)) %>%
     mutate(month = floor_date(Date,unit="month")) %>%
     group_by(month) %>%
     summarize(cards_searched = n()) %>%
     ungroup() %>%
     arrange(desc(cards_searched)) %>% drop_na() %>%
     arrange(month)
+
+newspaper_ovr_month %>% 
+    left_join(users_per_month) %>% 
+    rename(newspaper_searches = cards_searched) %>%
+    mutate(newspaper_traffic =scales::percent( (newspaper_searches/total_searches), accuracy = 0.01)) %>%
+    filter(month != max(month))
 
 newspaper_searches_by_month_tbl = newspaper_unique_card_searches %>%
     mutate(month = floor_date(Date,unit="month")) %>%
@@ -440,13 +441,12 @@ newspaper_searches_by_month_tbl = newspaper_unique_card_searches %>%
     arrange(month) %>%
     mutate(users_total_searches = sum(cards_searched),
            users_distribution = round(cards_searched/users_total_searches,3)) %>%
-    rename(user_searches = cards_searched) %>% 
-    filter(month <= "2021-06-25")
+    rename(user_searches = cards_searched) 
 
 
 # Sleeper Usage Rates -----------------------------------------------------
 
-sleepers_unique_card_searches = server_data_date_cleansed_tbl %>% 
+sleepers_unique_card_searches = discord_review %>% 
     mutate(Content = as.character(as.factor(Content))) %>% 
     separate(Content,c("card","user_details"),sep = " from ") %>% 
     arrange(desc(Date)) %>% 
@@ -459,7 +459,7 @@ sleepers_unique_card_searches = server_data_date_cleansed_tbl %>%
     filter(Date >= "2021-02-01")
 
 
-unique_card_searches %>% nrow()
+
 sleepers_unique_card_searches %>% nrow() 
 
 sleepers_ovr_user = sleepers_unique_card_searches %>%
@@ -477,12 +477,11 @@ sleepers_searches_by_month_tbl = sleepers_unique_card_searches %>%
     arrange(month) %>%
     mutate(users_total_searches = sum(cards_searched),
            users_distribution = round(cards_searched/users_total_searches,3)) %>%
-    rename(user_searches = cards_searched) %>% 
-    filter(month <= "2021-06-25")
+    rename(user_searches = cards_searched) 
 
 # Global Usage Rates ------------------------------------------------------
 
-global_unique_card_searches = server_data_date_cleansed_tbl %>% 
+global_unique_card_searches = discord_review %>% 
     mutate(Content = as.character(as.factor(Content))) %>% 
     separate(Content,c("card","user_details"),sep = " from ") %>% 
     arrange(desc(Date)) %>% 
@@ -525,7 +524,7 @@ all_searches_by_month_tbl = unique_card_searches %>%
     mutate(users_total_searches = sum(cards_searched),
            users_distribution = round(cards_searched/users_total_searches,3)) %>%
     rename(user_searches = cards_searched) %>% 
-    filter(month <= "2021-06-25")
+    filter(month >= "2022-01-01")
 
 all_page_searches_tbl = all_searches_by_month_tbl %>%
     left_join(newspaper_searches_by_month_tbl,by=c("month"="month")) %>%
@@ -564,3 +563,369 @@ ggplot(aux_page_searches_tbl, aes(x=month,y=value)) +
         y = "Total Clicks"
     ) +
     theme_minimal()
+
+
+# Discord Sentiment -------------------------------------------------------
+pacman::p_load(janitor)
+author_content_all = discord_review %>% 
+    filter(!grepl("(auction|autobot|watch|neverland|super|mods|cast)",channel)) %>%
+    clean_names() %>% 
+    filter(date >= '2020-01-01') %>% 
+    select(author,date,content) %>%
+    mutate(date = floor_date(date,"month"))
+
+authors_from_2020 = author_content_all %>% 
+    group_by(author,date) %>% 
+    summarize(ct = n() ) %>% 
+    ungroup() %>% 
+    arrange((ct)) %>%
+    filter(!grepl(("\\#0000"),author)) 
+
+user_post_review = function(authors_from_2020){
+    left_join(
+        authors_from_2020 %>%
+            group_by(date) %>%
+            summarize(all_user_who_posted_at_least_once = n()) %>%
+            ungroup(),
+        
+        authors_from_2020 %>%
+            filter(ct >= 35) %>%
+            group_by(date) %>%
+            summarize(users_post_one_per_day = n()) %>%
+            ungroup()) %>%
+        left_join(.,
+                  
+                  authors_from_2020 %>%
+                      filter(ct >= 70) %>%
+                      group_by(date) %>%
+                      summarize(users_post_two_per_day = n()) %>%
+                      ungroup()) %>%
+        left_join(.,
+                  authors_from_2020 %>%
+                      filter(ct >= 100) %>%
+                      group_by(date) %>%
+                      summarize(users_post_three_per_day = n()) %>%
+                      ungroup()
+        ) %>% 
+        left_join(
+            authors_from_2020 %>%
+                filter(ct >= 300) %>%
+                group_by(date) %>%
+                summarize(users_post_ten_plus_per_day = n()) %>%
+                ungroup()
+        ) %>% 
+        mutate(
+            core_users_comp = round(users_post_ten_plus_per_day/all_user_who_posted_at_least_once,3)
+        ) 
+}
+
+group_logic = function(group_5){
+    group_5_patterns = group_5 %>%
+        arrange(date, author) %>%
+        group_by(author) %>%
+        summarize(date,
+                  lagged_date = as.Date(ifelse(is.na(lag(date)), format(date - months(1),"%Y-%m-%d"), format(lag(date),"%Y-%m-%d") )) ,
+                  sequential_months = ifelse( (date - lagged_date) < 32, 1,0 ) + 1 ) %>%
+        ungroup() %>% 
+        select(-lagged_date) %>%
+        group_by(author) %>% 
+        summarize(
+            date,
+            streak_lengths = ceiling(ave(sequential_months, cumsum(sequential_months == 1), FUN = cumsum)/2),
+            
+            sequential_months = floor(sequential_months/2)) %>%
+        ungroup() 
+    
+    user_trends = group_5_patterns %>%
+        mutate(rate = "users_post_ten_plus_per_day") %>%
+        left_join(
+            group_5_patterns %>% filter(sequential_months == 0) %>% group_by(author) %>% summarize(number_of_streaks = n()+1) %>% ungroup() 
+        ) %>%
+        left_join(
+            group_5_patterns %>% group_by(author) %>% summarize(total_months = n()) %>% ungroup() 
+        ) %>%
+        left_join(
+            group_5_patterns %>%  group_by(author) %>% filter(streak_lengths == max(streak_lengths)) %>% summarize(longest_streak_end_date = max(date)) %>% ungroup() 
+        ) %>%
+        left_join(
+            group_5_patterns %>%  group_by(author) %>% filter(date == max(date)) %>% ungroup() %>% rename(most_recent_month = date) %>% select(-streak_lengths,-sequential_months)
+        ) %>%
+        mutate(number_of_streaks = ifelse(is.na(number_of_streaks),1,number_of_streaks))
+    
+    
+    distinct_group_5_dates = group_5 %>% select(date) %>% distinct()
+    
+    new_core_users = NULL
+    for(i in 1:nrow(distinct_group_5_dates)){
+        tbl_one = group_5 %>% filter(date == distinct_group_5_dates$date[i])
+        tbl_two = group_5 %>% filter(date == distinct_group_5_dates$date[i+1]) %>% filter(author %!in% tbl_one$author)
+        
+        if(i == 1){
+            new_core_users = rbind(length(tbl_one$author),length(tbl_two$author))
+        }
+        
+        new_core_users = rbind(new_core_users,length(tbl_two$author))
+    }
+    
+    remove_existing_core_members = group_5 %>% 
+        nest(contains('author'), .key = 'author') %>% 
+        mutate(author = map(author, simplify)) %>% 
+        mutate(
+            author_list = sapply(author, toString)
+        ) %>%
+        mutate(rate = "users_post_ten_plus_per_day")
+    ovr_core_tbl = cbind(distinct_group_5_dates,new_core_users %>% as_tibble() %>% .[-c((nrow(new_core_users)-1):nrow(new_core_users)),] %>% rename(new_core_users = V1)) %>%
+        cbind(.,remove_existing_core_members %>% select(rate,author_list) )
+    
+    
+    gain_loss_tbl = NULL
+    for(i in 1:(nrow(remove_existing_core_members)-1) ){
+        
+        
+        new_authors = as.data.frame(remove_existing_core_members$author[i+1])
+        colnames(new_authors) = c("V1")
+        
+        old_authors = as.data.frame(remove_existing_core_members$author[i])
+        colnames(old_authors) = c("V1")
+        
+        if(i == 1){
+            new_core_usernames = paste(old_authors %>% unlist(), collapse = ", ")
+            lost_core_users = paste("", collapse=", ")
+            gain_loss_line_item = cbind(new_core_usernames,lost_core_users)
+            gain_loss_tbl = rbind(gain_loss_tbl,gain_loss_line_item)
+        }
+        
+        new_core_users = anti_join(new_authors,old_authors)[[1]]
+        lost_core_users = anti_join(old_authors,new_authors)[[1]]
+        if(identical(character(0),new_core_users)){
+            new_core_users = ""
+        }
+        if(identical(character(0),lost_core_users)){
+            lost_core_users = ""
+        }
+        
+        new_core_usernames = paste(new_core_users, collapse = ", ")
+        lost_core_users = paste(lost_core_users, collapse = ", ")
+        
+        
+        gain_loss_line_item = cbind(new_core_usernames,lost_core_users)
+        gain_loss_tbl = rbind(gain_loss_tbl,gain_loss_line_item)
+    }
+    
+    ovr_tbl = cbind(ovr_core_tbl,gain_loss_tbl %>% as_tibble() ) 
+    
+    return(list(ovr_tbl,user_trends))
+}
+
+exclusive_user_post_review = function(authors_from_2020){
+    
+    group_5 = authors_from_2020 %>%
+        filter(ct >= 300) %>%
+        filter(!grepl("(Scryfall#0970|Pricefall (beta)#0367)",author)) %>%
+        group_by(date,author) %>%
+        summarize(users_post_ten_plus_per_day = n()) %>%
+        ungroup()
+    
+    group_5_results = group_logic(group_5)
+    
+    group_5_ovr = group_5_results[[1]]
+    
+    group_5_usrs = group_5_results[[2]]
+    
+    group_4 = authors_from_2020 %>%
+        filter(ct >= 150) %>%
+        filter(ct < 300) %>%
+        filter(!grepl("(Scryfall#0970|Pricefall (beta)#0367)",author)) %>%
+        group_by(date,author) %>%
+        summarize(users_post_three_per_day = n()) %>%
+        ungroup()
+    
+    group_4_results = group_logic(group_4)
+    
+    group_4_ovr = group_4_results[[1]] %>% as_tibble() %>% mutate(rate="users_post_5-10_per_day")
+    
+    group_4_usrs = group_4_results[[2]]%>% as_tibble() %>% mutate(rate="users_post_5-10_per_day")
+    
+    
+    group_3 = authors_from_2020 %>%
+        filter(ct >= 70) %>%
+        filter(ct < 150) %>%
+        filter(!grepl("(Scryfall#0970|Pricefall (beta)#0367)",author)) %>%
+        group_by(date,author) %>%
+        summarize(users_post_two_per_day = n()) %>%
+        ungroup()
+    
+    group_3_results = group_logic(group_3)
+    
+    group_3_ovr = group_3_results[[1]] %>% as_tibble() %>% mutate(rate="users_post_2-5_per_day")
+    
+    group_3_usrs = group_3_results[[2]]%>% as_tibble() %>% mutate(rate="users_post_2-5_per_day")
+    
+    
+    group_2 = authors_from_2020 %>%
+        filter(ct >= 35) %>%
+        filter(ct < 70) %>%
+        filter(!grepl("(Scryfall#0970|Pricefall (beta)#0367)",author)) %>%
+        group_by(date,author) %>%
+        summarize(users_post_one_per_day = n()) %>%
+        ungroup()
+    
+    group_2_results = group_logic(group_2)
+    
+    group_2_ovr = group_2_results[[1]] %>% as_tibble() %>% mutate(rate="users_post_three_per_day")
+    
+    group_2_usrs = group_2_results[[2]]%>% as_tibble() %>% mutate(rate="users_post_three_per_day")
+    
+    group_1 = authors_from_2020 %>%
+        filter(ct < 35) %>%
+        filter(!grepl("(Scryfall#0970|Pricefall (beta)#0367)",author)) %>%
+        group_by(date,author) %>%
+        summarize(all_user_who_posted_at_least_once = n()) %>%
+        ungroup()
+    
+    group_1_results = group_logic(group_1)
+    
+    group_1_ovr = group_1_results[[1]] %>% as_tibble() %>% mutate(rate="users_post_three_per_day")
+    
+    group_1_usrs = group_1_results[[2]]%>% as_tibble() %>% mutate(rate="users_post_three_per_day")
+    
+    ovr_groups = rbind(group_5_ovr,group_4_ovr,group_3_ovr,group_2_ovr,group_1_ovr)
+    
+    usr_groups = rbind(group_5_usrs,group_4_usrs,group_3_usrs,group_2_usrs,group_1_usrs)
+    
+    return(list(ovr_groups,usr_groups))
+}
+
+
+all_user_overview = user_post_review(authors_from_2020)
+exclusive_all_user_overview = exclusive_user_post_review(authors_from_2020)
+
+
+# Users - Remove Admins & Mods --------------------------------------------
+remove_admins_mods = discord_review %>%
+    clean_names() %>%
+    filter(!grepl(("\\#0000"),author)) %>% 
+    filter(grepl("(super|mod)",channel)) %>%
+    select(author) %>%
+    distinct()
+
+cleansed_users = discord_review %>% 
+    clean_names() %>% 
+    filter(!grepl("(auction|autobot|watch|neverland|super|mods|cast)",channel)) %>%
+    filter(author %!in% remove_admins_mods$author ) %>%
+    filter(date >= '2020-01-01') %>% 
+    select(author,date,content) %>%
+    mutate(date = floor_date(date,"month"))
+
+cleansed_authors_from_2020 = cleansed_users %>% 
+    group_by(author,date) %>% 
+    summarize(ct = n() ) %>% 
+    ungroup() %>% 
+    arrange((ct)) %>%
+    filter(!grepl(("\\#0000"),author)) 
+
+cleansed_user_overview = user_post_review(cleansed_authors_from_2020)
+
+
+exclusive_cleansed_user_overview = exclusive_user_post_review(cleansed_authors_from_2020)
+
+
+
+# Remove - Admins, Mods, Founding Members ---------------------------------
+remove_admins_mods_fm = discord_review %>%
+    clean_names() %>%
+    filter(!grepl(("\\#0000"),author)) %>% 
+    filter(grepl("(super|mod|neverland)",channel)) %>%
+    select(author) %>%
+    distinct()
+
+cleansed_fm_users = discord_review %>% 
+    clean_names() %>% 
+    filter(!grepl("(auction|autobot|watch|neverland|super|mods|cast)",channel)) %>%
+    filter(author %!in% remove_admins_mods_fm$author ) %>%
+    filter(date >= '2020-01-01') %>% 
+    select(author,date,content) %>%
+    mutate(date = floor_date(date,"month"))
+
+cleansed_fm_authors_from_2020 = cleansed_fm_users %>% 
+    group_by(author,date) %>% 
+    summarize(ct = n() ) %>% 
+    ungroup() %>% 
+    arrange((ct)) %>%
+    filter(!grepl(("\\#0000"),author)) 
+
+cleansed_fm_user_overview = user_post_review(cleansed_fm_authors_from_2020)
+exclusive_fm_cleansed_user_overview = exclusive_user_post_review(cleansed_fm_authors_from_2020)
+
+pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery,RSelenium)
+
+patches = read_json("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
+
+google_auths = function(){
+    options(httr_oob_default=TRUE) 
+    options(gargle_oauth_email = patches$og_patches, use_oob=TRUE)
+    drive_auth(email = patches$og_patches,use_oob=TRUE)
+    gs4_auth(email = patches$og_patches,use_oob=TRUE)
+    suppressMessages(gc())
+}
+google_auths()
+ss <- drive_get("Discord Logs")
+
+sheet_write(
+    exclusive_all_user_overview[[1]],
+    ss = ss,
+    sheet = "all_users"
+)
+
+sheet_write(
+    exclusive_cleansed_user_overview[[1]],
+    ss = ss,
+    sheet = "admin/mod_removed_users"
+)
+
+sheet_write(
+    exclusive_fm_cleansed_user_overview[[1]],
+    ss = ss,
+    sheet = "true_users"
+)
+
+sheet_write(
+    exclusive_all_user_overview[[2]],
+    ss = ss,
+    sheet = "all_users_trends"
+)
+
+sheet_write(
+    exclusive_cleansed_user_overview[[2]],
+    ss = ss,
+    sheet = "admin/mod_removed_users_trends"
+)
+
+sheet_write(
+    exclusive_fm_cleansed_user_overview[[2]],
+    ss = ss,
+    sheet = "true_users_trends"
+)
+
+
+
+# ** Putting it all together ----
+
+text_recipe_5B <- recipe(content ~ ., data = author_content_all) %>%
+    step_tokenize(content) %>%
+    step_stopwords(content) %>%
+    step_ngram(
+        content,
+        num_tokens     = 3, 
+        min_num_tokens = 1
+    ) %>%
+    step_tokenfilter(
+        content,
+        max_tokens = 100
+    ) %>%
+    step_tfidf(content)
+
+
+text_recipe_5B %>% prep() %>% juice()
+
+

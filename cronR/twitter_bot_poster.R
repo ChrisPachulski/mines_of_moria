@@ -9,7 +9,7 @@ already_posted_logic = read_csv("/home/cujo253/mines_of_moria/Essential_Referent
 
 if(already_posted_logic$date < Sys.Date()){
     tryCatch({
-        my_threads <- gm_threads(search = paste0('Re: ',Sys.Date(),": Twitter"), num_results = 3)
+        my_threads <- gm_threads(search = paste0('Re: ',Sys.Date(),": Twitter"), num_results = 10)
         
         # retrieve the latest thread by retrieving the first ID
         latest_thread <- gm_thread(gm_id(my_threads)[[1]])
@@ -40,7 +40,8 @@ if(already_posted_logic$date < Sys.Date()){
             
             rtweet::post_tweet(
                 status = tweet_status,
-                media = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_media.png",
+                media = c("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_media.png"),
+                media_alt_text = 'Plot',
                 token = token_for_wolf
             )
             

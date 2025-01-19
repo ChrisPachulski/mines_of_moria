@@ -60,7 +60,8 @@ get_tcgp_sl_roster = function(){
         mutate(api_editions  = gsub(" ","-",gsub("\\'","",gsub("\\(","",gsub("\\)","",gsub(": ","-",tolower(editions))))))) %>% mutate(qty = ceiling(as.numeric(qty)/100) ) %>%
         mutate(api_editions = paste('"',api_editions,'"',sep=""))
     
-    stacked_text = stacked_text %>% filter(grepl("secret.*lair",editions))
+    
+    stacked_text = stacked_text %>% filter(grepl("(secret.*lair|secret-lair-30th|-tails-you-lose)",editions))
     
     return(stacked_text)
 }
@@ -211,7 +212,7 @@ tcg_data_grab = function(){
     all_cards_inventory = NULL
     i = 2
     #tcg_ids_of_interest[1,] = 205238
-    suppressMessages(for(i in 1:nrow(tcg_ids_of_interest)) {
+    (for(i in 1:nrow(tcg_ids_of_interest)) {
         #Test loop for qc work
         #suppressMessages(for(i in 1:5) {
         
@@ -239,8 +240,13 @@ tcg_data_grab = function(){
         if(c == 0){next}
         #
         for(d in 1:c ){
-            tryCatch({listings_bricks = map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()%>% select(-listedDate)}, error = function(e){listings_bricks = map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()})
-            seller_bricks = rbind(seller_bricks,listings_bricks) %>% as_tibble()}
+            listings_bricks = tryCatch({map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()%>% select(-listedDate,-soldDate)}, error = function(e){map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()})
+            listings_bricks = tryCatch({map_df(all_listings$results[[1]]$results[[d %>% unlist()]], ~ replace(.x, is.null(.x), NA)) %>% as_tibble()%>% select(-listedDate)}, error = function(e){listings_bricks})
+            listings_bricks = tryCatch({listings_bricks %>% select(-soldDate)}, error = function(e){listings_bricks})
+            
+            
+            seller_bricks = rbind(seller_bricks,listings_bricks) %>% as_tibble()
+            }
         
         direct = seller_bricks %>% filter(directSeller == TRUE) %>% 
             group_by(productId,printing,condition) %>% 
@@ -409,7 +415,7 @@ tcg_data_grab = function(){
                     #filter(dop == Sys.Date()-1) %>% 
                     distinct()
                 
-                if(min_date < Sys.Date() - 30){break}
+                if(min_date < Sys.Date() - 35){break}
                 
             }else{all_line_items = rbind(all_line_items,all_sales_for_card_inside_loop) %>%
                 group_by(tcg_id,condition,version,dop) %>%
@@ -451,51 +457,51 @@ tcg_data_grab = function(){
         
         abcd = 1
         tryCatch({
-        for(abcd in 1:length(card_dimensions$version)){
-            NEW_MKT = all_sales_for_card %>% 
-                filter(tcg_id == tcg_ids_of_interest$tcg_id[i]) %>%
-                filter(version == card_dimensions$version[abcd]) %>%
-                filter(dop == max(dop)) %>%
-                select(avg_sell_price) %>%
-                unlist()
-            
-            est_row_check = nrow(all_sales_for_card %>% 
-                                       filter(tcg_id == tcg_ids_of_interest$tcg_id[i]) %>%
-                                       filter(version == card_dimensions$version[abcd]) )
-            
-            if(est_row_check < 5 ){
-                NEW_MKT_EST = all_sales_for_card %>% 
+            for(abcd in 1:length(card_dimensions$version)){
+                NEW_MKT = all_sales_for_card %>% 
                     filter(tcg_id == tcg_ids_of_interest$tcg_id[i]) %>%
                     filter(version == card_dimensions$version[abcd]) %>%
-                    .[(nrow(.)-est_row_check):nrow(.),] %>%
-                    mutate(placeholder = avg_sell_price * sold_quantity) %>%
-                    summarize(tcg_id = tcg_id,
-                              version = version,
-                              mkt_est = round(sum(placeholder)/sum(sold_quantity),2)) %>%
-                    distinct() %>%
-                    select(mkt_est) %>%
+                    filter(dop == max(dop)) %>%
+                    select(avg_sell_price) %>%
                     unlist()
-            }else{
-                NEW_MKT_EST = all_sales_for_card %>% 
-                    filter(tcg_id == tcg_ids_of_interest$tcg_id[i]) %>%
-                    filter(version == card_dimensions$version[abcd]) %>%
-                    .[(nrow(.)-4):nrow(.),] %>%
-                    mutate(placeholder = avg_sell_price * sold_quantity) %>%
-                    summarize(tcg_id = tcg_id,
-                              version = version,
-                              mkt_est = round(sum(placeholder)/sum(sold_quantity),2)) %>%
-                    distinct() %>%
-                    select(mkt_est) %>%
-                    unlist()
+                
+                est_row_check = nrow(all_sales_for_card %>% 
+                                         filter(tcg_id == tcg_ids_of_interest$tcg_id[i]) %>%
+                                         filter(version == card_dimensions$version[abcd]) )
+                
+                if(est_row_check < 5 ){
+                    NEW_MKT_EST = all_sales_for_card %>% 
+                        filter(tcg_id == tcg_ids_of_interest$tcg_id[i]) %>%
+                        filter(version == card_dimensions$version[abcd]) %>%
+                        .[(nrow(.)-est_row_check):nrow(.),] %>%
+                        mutate(placeholder = avg_sell_price * sold_quantity) %>%
+                        summarize(tcg_id = tcg_id,
+                                  version = version,
+                                  mkt_est = round(sum(placeholder)/sum(sold_quantity),2)) %>%
+                        distinct() %>%
+                        select(mkt_est) %>%
+                        unlist()
+                }else{
+                    NEW_MKT_EST = all_sales_for_card %>% 
+                        filter(tcg_id == tcg_ids_of_interest$tcg_id[i]) %>%
+                        filter(version == card_dimensions$version[abcd]) %>%
+                        .[(nrow(.)-4):nrow(.),] %>%
+                        mutate(placeholder = avg_sell_price * sold_quantity) %>%
+                        summarize(tcg_id = tcg_id,
+                                  version = version,
+                                  mkt_est = round(sum(placeholder)/sum(sold_quantity),2)) %>%
+                        distinct() %>%
+                        select(mkt_est) %>%
+                        unlist()
+                }
+                
+                rankings = best_sellers %>% 
+                    rename(version = isFoil) %>%
+                    select(Product_ID,version,Vendor_Listings,MKT_EST,MKT) %>%
+                    mutate(MKT = ifelse( (Product_ID == card_dimensions$tcg_id) & (version == card_dimensions$version[abcd]),NEW_MKT, MKT ), 
+                           MKT_EST = ifelse( (Product_ID == card_dimensions$tcg_id) & (version == card_dimensions$version[abcd]),NEW_MKT_EST, MKT_EST ))
             }
-            
-            rankings = best_sellers %>% 
-                rename(version = isFoil) %>%
-                select(Product_ID,version,Vendor_Listings,MKT_EST,MKT) %>%
-                mutate(MKT = ifelse( (Product_ID == card_dimensions$tcg_id) & (version == card_dimensions$version[abcd]),NEW_MKT, MKT ), 
-                       MKT_EST = ifelse( (Product_ID == card_dimensions$tcg_id) & (version == card_dimensions$version[abcd]),NEW_MKT_EST, MKT_EST ))
-        }
-        },error=function(e){print(paste0("No Sales for ",tcg_ids_of_interest$tcg_id[i]," in the past 30 days."))})
+        },error=function(e){print(paste0("No Sales for ",tcg_ids_of_interest$tcg_id[i]," in the past 35 days."))})
         
         if(is.null(all_sales_for_card)){next}
         
@@ -537,7 +543,7 @@ tcg_data_grab = function(){
 }
 
 ban_set_api_bl=function(edition){
-    BAN_SL_data = GET(paste0("https://www.mtgban.com/api/mtgban/buylist/",edition,".json?id=tcg&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjUzNDAxMzEzJlNpZ25hdHVyZT1kbjRUSWd2Q3hTWEpCZmtYS0JpRGNhRmNpZXMlM0QmVXNlckVtYWlsPXdvbGYlNDBtdGdiYW4uY29t"),content_type_json()) %>% 
+    BAN_SL_data = GET(paste0("https://www.mtgban.com/api/mtgban/buylist/",edition,".json?id=tcg&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmU2lnbmF0dXJlPTRuNnFkamN5MU9UU3Y3aVZzTVpMYTYlMkZ6YjVBJTNEJlVzZXJFbWFpbD13b2xmJTQwbXRnYmFuLmNvbQ%3D%3D"),content_type_json()) %>% 
         content("parsed")
     
     full_item_tbl = NULL
@@ -600,7 +606,7 @@ ban_set_api_bl=function(edition){
     return(buylist_master_tbl)
 }
 ban_set_api_mkt=function(edition){
-    BAN_data = GET(paste0("https://www.mtgban.com/api/mtgban/retail/",edition,".json?id=tcg&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmRXhwaXJlcz0xNjUzNDAxMzEzJlNpZ25hdHVyZT1kbjRUSWd2Q3hTWEpCZmtYS0JpRGNhRmNpZXMlM0QmVXNlckVtYWlsPXdvbGYlNDBtdGdiYW4uY29t"),content_type_json()) %>% 
+    BAN_data = GET(paste0("https://www.mtgban.com/api/mtgban/retail/",edition,".json?id=tcg&sig=QVBJPUFMTF9BQ0NFU1MmQVBJbW9kZT1hbGwmU2lnbmF0dXJlPTRuNnFkamN5MU9UU3Y3aVZzTVpMYTYlMkZ6YjVBJTNEJlVzZXJFbWFpbD13b2xmJTQwbXRnYmFuLmNvbQ%3D%3D"),content_type_json()) %>% 
         content("parsed")
     
     full_item_tbl = NULL
@@ -669,7 +675,6 @@ naming_tbl = all_values[[2]] %>%
     distinct()
 
 
-final_tbl %>% view()
 
 final_tbl = naming_tbl                          %>%
     left_join(all_values[[1]]                   %>% 
@@ -684,7 +689,7 @@ final_tbl = naming_tbl                          %>%
     )                                   %>%
     filter(!is.na(date)
     )                                    %>%
-    select(-set_rank)                           %>%
+    #select(-set_rank)                           %>%
     rename(current_available_copies=all_quantity,
            current_vendors = all_seller_ct,
            most_copies_single_seller=largest_seller,
@@ -704,7 +709,8 @@ final_tbl = naming_tbl                          %>%
     select(-contains("d_"),
            -max_single_qty)                   %>%
     mutate(across(where(is.numeric), round, 2)) %>%
-    filter(condition == "NM" | condition == "")
+    filter(condition == "NM" | condition == "") %>%
+    filter(mkt_low >0) 
 
 
 ban_sl_bl_data = ban_set_api_bl("sld") %>% 
@@ -719,6 +725,7 @@ buylist_sl_tbl = buylist_sl_tbl%>% filter(!is.na(card)) %>% rbind(.,versioning_e
 sl_wider_bl_tbl = buylist_sl_tbl %>% 
     mutate(offer_source = gsub(" Buylist","",vendor)) %>%
     distinct() %>%
+    filter(offer_source != '') %>%
     pivot_wider(id_cols = c("tcg_id","card","set","hasFoil","rarity","number"),
                 names_from = "offer_source",
                 values_from = "offer") %>%
@@ -749,24 +756,34 @@ sl_wider_mkt_tbl = market_sl_tbl %>%
 
 #final_tbl %>% view()
 options(httr_oob_default=TRUE) 
-options(gargle_oauth_email = "pachun95@gmail.com")
-drive_auth(email = "pachun95@gmail.com",use_oob=TRUE)
-gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
+options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
 
-ss <- drive_get("TCGPlayer Pricing Sheet 2020")
+drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+# Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
+gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gc()
 
+ss <- drive_get("TCGPlayer SL Pricing Sheet")
 
-sheet_write(ss=ss,
+sheet_write(ss='1ZzzteWD2mxK1OWKzvNitASlaovNZ0nKepUwOusLJ64Q',
             sheet= "Wolfs_tcg_churn",
             final_tbl)
 
-sheet_write(ss=ss,
+sheet_write(ss='1ZzzteWD2mxK1OWKzvNitASlaovNZ0nKepUwOusLJ64Q',
             sheet= "BAN_api_mkt",
             sl_wider_mkt_tbl)
 
-sheet_write(ss=ss,
+sheet_write(ss='1ZzzteWD2mxK1OWKzvNitASlaovNZ0nKepUwOusLJ64Q',
             sheet= "BAN_api_bl",
             sl_wider_bl_tbl)
 
+double_check = read_sheet(ss = '1ZzzteWD2mxK1OWKzvNitASlaovNZ0nKepUwOusLJ64Q',
+                          sheet = 'Wolfs_tcg_churn') %>% nrow()
+
+while ( (final_tbl %>% nrow()) != double_check){
+    sheet_write(ss='1ZzzteWD2mxK1OWKzvNitASlaovNZ0nKepUwOusLJ64Q',
+                sheet= "Wolfs_tcg_churn",
+                final_tbl)
+}
 
 

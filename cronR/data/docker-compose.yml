@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  scraper:
+    image: mtgelmo/tcg_scraper:latest
+    command: --category lorcana-tcg
+    volumes:
+      - /home/cujo253/mines_of_moria/cronR/data:/scraped-data/
+    user: "1000:1000"
+    platform: linux/amd64
+
+  bq_uploader:
+    image: google/cloud-sdk:latest
+    volumes:
+      - /home/cujo253/mines_of_moria/cronR/data/lorcana-tcg:/data/lorcana-tcg
+      - /home/cujo253/mines_of_moria/cronR/scripts/upload_to_bq.sh:/scripts/upload_to_bq.sh:ro
+      - /home/cujo253/mines_of_moria/cronR/credentials/gaeas-cradle.json:/credentials/gaeas-cradle.json:ro
+    working_dir: /data/lorcana-tcg
+    entrypoint: ["/bin/bash", "/scripts/upload_to_bq.sh"]
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/credentials/gaeas-cradle.json
+    user: "1000:1000"
+    depends_on:
+      - scraper
+
+

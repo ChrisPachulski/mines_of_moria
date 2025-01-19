@@ -1,4 +1,4 @@
-pacman::p_load(tidyverse,ggplot2,ggrepel,bigrquery,googlesheets4,googledrive,jsonlite,janitor,tidyRSS,lubridate,anytime,rtweet,magick,gmailr)
+pacman::p_load(tidyverse,ggplot2,ggrepel,bigrquery,googlesheets4,googledrive,jsonlite,janitor,tidyRSS,lubridate,anytime,rtweet,magick,gmailr,googleAuthR)
 my_secrets = read_json("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
 '%!in%' <- function(x,y)!('%in%'(x,y))
 
@@ -57,8 +57,8 @@ cujos_cyber_lines <- function(df,
   }
   
   #Set colour palette
-  col <- colorRampPalette(c("#ff184c", "#ff577d", "#ffccdc", "#0a9cf5", "#003062",
-                            "#ff124f", "#ff00a0", "#fe75fe", "#7a04eb", "#ff6e27",
+  col <- colorRampPalette(c("#a618ff", "#ff577d", "#ffccdc", "#0a9cf5", "#003062",
+                            "#ff8512", "#ff00a0", "#fe75fe", "#7a04eb", "#ff6e27",
                             "#7700a6", "#fe00fe", "#defe47","#00b3f3","#0016ee"))(choices)
   
   
@@ -95,7 +95,7 @@ cujos_cyber_lines <- function(df,
                        box.padding = unit(0.45, "lines"),
                        point.padding = unit(0.45, "lines"),
                        nudge_y = 1,
-                       colour = "#ff184c",
+                       colour = "#05d9e8",
                        fill = "black",
                        show.legend = FALSE)
       
@@ -125,7 +125,7 @@ cujos_cyber_lines <- function(df,
                        box.padding = unit(0.45, "lines"),
                        point.padding = unit(0.45, "lines"),
                        nudge_y = 1,
-                       colour = "#ff184c",
+                       colour = "#05d9e8",
                        fill = "black",
                        show.legend = FALSE)
   }else if(tolower(y_format)=="percent"){
@@ -154,7 +154,7 @@ cujos_cyber_lines <- function(df,
                        box.padding = unit(0.45, "lines"),
                        point.padding = unit(0.45, "lines"),
                        nudge_y = 1,
-                       colour = "#ff184c",
+                       colour = "#05d9e8",
                        fill = "black",
                        show.legend = FALSE)
   }
@@ -400,7 +400,7 @@ cujos_secret_cyber_bars <- function(df,
   #df = logic %>% head(20) 
   df = df %>% head(20)
   if(length(df$condition)!=0){
-    df = df %>% mutate(product_name = paste0(product_name,"|",condition)) %>% select(-condition) %>% group_by(product_name,current_supply,current_months_sales,most_recent_sale,qty_last_4_months,average_sales_price,monthly_sell_through,quarterly_sell_through,daily_sell_through_current_month,daily_sell_through_current_quarter) %>% summarize(tcg_low = min(tcg_low)) %>% ungroup() 
+    df = df %>% mutate(product_name = paste0(product_name,"|",condition)) %>% select(-condition) %>% group_by(product_name,current_supply,current_months_sales) %>% summarize(tcg_low = min(mkt)) %>% ungroup() 
   }
   # https://blog.depositphotos.com/15-cyberpunk-color-palettes-for-dystopian-designs.html
   
@@ -518,17 +518,24 @@ cujos_secret_cyber_bars <- function(df,
 }
 
 # My data base is named Gaea's Cradle! I have so much imaginative prowess. Let's connect to it with this function.
-gaeas_cradle <- function(email){
-  con <- dbConnect(
-    bigrquery::bigquery(),
-    project = my_secrets$project,
-    dataset = my_secrets$dataset,
-    billing = my_secrets$billing
-  )
-  bq_auth(email = email, use_oob = TRUE)
-  options(scipen = 20)
-  con
-} 
+invisible(gaeas_cradle <- function(){
+    
+    service_account_file = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json'
+    gar_auth_service(service_account_file)
+    
+    bq_auth(path = service_account_file)
+    
+    con <- dbConnect(
+        bigrquery::bigquery(),
+        project = "gaeas-cradle",
+        dataset = "premiums",
+        billing = "gaeas-cradle"
+    )
+    #bq_auth(email = patches$patches, use_oob = TRUE)
+    options(scipen = 20)
+    con
+    
+})
 # Incredibly important function. It is the powerhouse of the cell. This basic math will consilidate the insights into simple filtering to provide ease of understanding.
 # To be fair, this should likely be dynamic to the data source being looked at to opt between median and mean, but, for now, it opts to highly skewed data, bc mtg is really skewed data.
 detect_outliers <- function(x) {
@@ -787,6 +794,8 @@ basket_sealed_sale_pre_preparations = function(mtg_basket_all_tbl){
     #However, bc users are weird (- not silly...okay silly) and SOME sites, ahem, don't allow for foreign product to be listed
     #in other languages, just sorting for english or the like still lets outliers leak through. As we'll see below that's a huge problem
     #for these items.
+    filter(!grepl("Case$",card)) %>%
+    
     filter(listing_type ==1 ) %>%
     #Get aggregated data by day before going forward. Weird little mini aggregation step that for some reason didn't originally occur to me
     group_by(date,tcg_id,hasFoil,card,set,rarity,number) %>%
@@ -939,7 +948,7 @@ card_kingdom_buylist_review = function(){
            # So by being super duper clever (where's my award) the ratio is more revealing than really anything else.
            Tier_QTY_Diff = ntile(QTY_Diff,10),
            Tier_Price_Diff = ntile(Price_Diff,10),
-           Tier_data.qty_buying = ntile(data.qty_buying,10))%>%
+           Tier_data.qty_buying = ntile(data.qty_buying,10)) %>%
     mutate(
       #Less smart, just useful, what's the average of all these buckets put together, equally weighted.
       Tier = round(rowMeans(
@@ -965,7 +974,7 @@ card_kingdom_buylist_review = function(){
   #Oh, thanks to mtjson for giving me the rdate column, that helps me get rid of
   # new standard sets that just make everything wonky.
   Eternal_Growers = Slim_CK_Buylist                           %>% 
-    filter(Tier >= 9.5 & data.qty_retail >= 8)              %>%
+    filter(Tier >= 8 & data.qty_retail >= 8)              %>%
     left_join(.,
               Sets %>% select(CK_BL_Scrape_Sets,mtgjson), 
               by = c("data.edition" = "CK_BL_Scrape_Sets")) %>%
@@ -978,7 +987,8 @@ card_kingdom_buylist_review = function(){
     filter(is.na(rdate)==F                                   & 
              rdate <= (Sys.Date() %m-% months(13))) %>%
     arrange(desc(Tier),desc(Price_Diff)) %>%
-    mutate(Tier = seq(nrow(.)))
+    mutate(Tier = seq(nrow(.))) %>%
+    filter(data.price_buy > 30)
   
   return(Eternal_Growers)
   
@@ -993,7 +1003,7 @@ secret_lair_data = function(){
   gs4_auth(email = my_secrets$og_patches,use_oob=TRUE)
   gc()
   #drive_create("TCG_Review")
-  ss <- drive_get("TCGPlayer Pricing Sheet 2020")
+  ss <- drive_get("TCGPlayer SL Pricing Sheet")
   
   sl_sealed_data <- read_sheet(ss,"Sealed") %>% clean_names()
   
@@ -1006,12 +1016,12 @@ secret_lair_data = function(){
 # for every day of the month. Mostly, it pulls on my personal database, but occasionally other resources as well to create content.
 database_pull = function(){
   # This entire thing ticks off day_in_month, it decides the data base pulls as well as the content to send twitters ways.
-  day_in_month = day(Sys.Date())
-  #day_in_month = 13
+  #day_in_month = 2
+  day_in_month = day(today())
   post_logic = function(data){
     
-    day_in_month = day(Sys.Date())
-    #day_in_month = 13
+    day_in_month = day(today())
+    #day_in_month = 17
     
     #Buy List Analysis Dates 1:8
     
@@ -1078,6 +1088,12 @@ database_pull = function(){
       #Provide key details for graph axis and formatting. It was really quite the hassle to account for dollars, percents, and integers all at once, let me tell you..
       media_component = logic %>% cujos_cyber_lines(.,offer,y_format="dollars",ylab="CK Offer",main=logic_chosen)
       
+      if(unique(logic$hasFoil)==1){
+        nf_f = "(F)"
+      }else{
+        nf_f = "(NF)"
+      }
+      
       #Ensure that if my desired message is too large, for some reason, the content will post without it, to ensure something is generate.
       # Likely will alter this to ensure it retain the hashtags for BAN.
       tweet_content = paste0(unique(logic$card),
@@ -1089,8 +1105,7 @@ database_pull = function(){
                              max(logic$change),
                              "(",
                              scales::percent(max(logic$change)/logic$offer[1]),
-                             "). Spotlight on higher value item to gauge broader movement, 
-                            may be an opportunity for arb or time to buy.",
+                             "). Spotlight on higher value item to gauge broader movement, may be an opportunity for arb or time to buy.",
                              " #mtgban #mtgfinance")
       
       #If this tweet for some reason is above threshold, just post the media. 
@@ -1393,15 +1408,15 @@ database_pull = function(){
     if(day_in_month == 9){
       #Create a cutoff to ensure that we stick with data that has represented itself a great deal in the prior month
       cutoff = data %>% select(ct) %>% summarize(cutoff = max(ct)-1)
-      logic = data %>% filter(ct >= cutoff$cutoff) %>% filter(rarity != 'S')  %>% filter(avg_sell_price >= 15) %>%filter(change_sum == min(change_sum))
+      logic = data %>% filter(ct >= cutoff$cutoff) %>% filter(rarity != 'S')  %>% filter(hasFoil != 1) %>% filter(avg_sell_price >= 15) %>%filter(change_sum == min(change_sum))
       if(length(unique(logic$card))> 1){
         the_chosen_one = logic %>% filter(offer == max(offer)) %>% select(tcg_id,hasFoil) %>% distinct()
         
-        logic = logic %>% filter(tcg_id == the_chosen_one$tcg_id & hasFoil == the_chosen_one$hasFoil)
+        logic = logic %>% filter(tcg_id == the_chosen_one$tcg_id[1] & hasFoil == the_chosen_one$hasFoil[1])
       }
       logic_chosen = "Worst Card By Actual Copies Sold"
       media_component = logic %>% cujos_cyber_lines(.,offer,ylab="Copies Sold",main=logic_chosen)
-      
+      logic %>% view()
       if(unique(logic$hasFoil)==1){
         nf_f = "(F)"
       }else{
@@ -1584,9 +1599,9 @@ database_pull = function(){
     #data = basket_sale_price_tbl
     if(day_in_month == 14){
       #Create a cutoff to ensure that we stick with data that has represented itself a great deal in the prior month
-      cutoff = data %>% select(ct) %>% summarize(cutoff = max(ct)-1)
+      cutoff = data %>% select(ct) %>% summarize(cutoff = max(ct)-2)
       #Remember those exclusion sets from the cardkingdom function? Yeah. Here's but a taste. I'm next to positive this will say something crazy eventually off a nuts set that doesn't really matter.
-      logic = data %>% filter(ct >= cutoff$cutoff) %>% filter(!grepl("(Ice Age|Alpha|Beta|Arabian)",set)) %>% filter(change_sum == min(change_sum)) %>% filter(outliers_detected == max(outliers_detected))
+      logic = data %>% filter(ct >= cutoff$cutoff) %>% filter(!grepl("(Ice Age|Alpha|Beta|Arabian)",set)) %>% filter(change_sum == min(change_sum)) %>% filter(outliers_detected < cutoff$cutoff) %>% filter(outliers_detected == max(outliers_detected))
       if( length(unique(logic$card)) > 1 ){
         logic_id = logic %>% filter(offer == min(offer,na.rm=T)) %>% select(tcg_id) %>% unique()
         logic = logic %>% filter(tcg_id %in% logic_id$tcg_id)
@@ -1681,9 +1696,9 @@ database_pull = function(){
                              "-",
                              nf_f,
                              " value is declining, starting the month w/ a mkt value of ",
-                             scales::dollar(min(logic$offer,na.rm=T)),
-                             " and down to ",
                              scales::dollar(max(logic$offer,na.rm=T)),
+                             " and down to ",
+                             scales::dollar(min(logic$offer,na.rm=T)),
                              ".The buyer spotlight, or phase, may be moving away. This is creating either a warning sign or an opportunity",
                              " #mtgban #mtgfinance")
       #If this tweet for some reason is above threshold, just post the media. 
@@ -2068,7 +2083,7 @@ database_pull = function(){
     }
     #Secret Lair Data 27:30
     #test on my end to ensure functionality
-    data = secret_lair_data()
+    #data = secret_lair_data()
     if(day_in_month == 27){
       logic = data[[1]] %>% filter(!is.na(tc_gplayer_id)) %>% arrange(desc(monthly_sell_through)) %>% head(10)
       logic_chosen = "Best Secret Lair by Monthly Sales Rate"
@@ -2135,12 +2150,12 @@ database_pull = function(){
       return(list(logic,logic_chosen,media_component,tweet_content))
     }
     if(day_in_month == 30){
-      logic = data[[2]] %>% clean_names() %>% filter(!is.na(tc_gplayer_id)) %>% filter(current_supply >= 15)%>% arrange(desc(qty_last_4_months)) %>% head(20)
-      logic_chosen = "Best Secret Lair Singles by Quarterly Copies Sold"
+      logic = data[[2]] %>% clean_names() %>% filter(!is.na(tc_gplayer_id)) %>% filter(current_supply >= 15)%>% arrange(desc(current_months_sales)) %>% head(10)
+      logic_chosen = "Best Secret Lair Singles by Monthly Copies Sold"
       
-      media_component = logic %>% arrange(qty_last_4_months) %>% cujos_secret_cyber_bars(.,qty_last_4_months,y_format = NULL,ylab="Copies Sold",main=logic_chosen)
+      media_component = logic %>% arrange(current_months_sales) %>% cujos_secret_cyber_bars(.,current_months_sales,y_format = NULL,ylab="Copies Sold",main=logic_chosen)
       
-      tweet_content = paste0("Please be mindful, cards that are cheaper will sell more copies. Cards of higher value being compared to lower value cards irg to copies sold is very important elemtn to keep in mind. A 20$ card is moving as many copies as a $1 card? That is of interest.",
+      tweet_content = paste0("Please be mindful, cards that are cheaper will sell more copies. Cards of higher value being compared to lower value cards irg to copies sold is very important elemnt to keep in mind. A 20$ card is moving as many copies as a $1 card? That is of interest.",
                              " #mtgban #mtgfinance")
       #If this tweet for some reason is above threshold, just post the media. 
       #I worked too hard on the visuals to not at least hope for discussion 
@@ -2178,7 +2193,7 @@ database_pull = function(){
   
   #Pull appropriate data from BQ, GS, or my own general scripts depending on dates for content generation
   if(day_in_month <=4){
-  con <- gaeas_cradle(my_secrets$patches)
+  con <- gaeas_cradle()
   statement <- paste('SELECT most_recent_table, DATE_DIFF( CURRENT_DATE() , most_recent_table ,DAY) days_behind_today
                     FROM (
                         SELECT max(CAST(regexp_replace(regexp_extract(table_name,"\\\\d{4}_\\\\d{2}_\\\\d{2}"),"_","-") as Date)) most_recent_table
@@ -2188,7 +2203,7 @@ database_pull = function(){
   table_limitations <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble()
   
   
-  con <- gaeas_cradle(my_secrets$patches)
+  con <- gaeas_cradle()
   statement <- paste("SELECT * ","FROM `gaeas-cradle.ban_buylist.*` a 
   LEFT JOIN (SELECT uuid,tcg_id,card,c.set,c.rarity,c.number FROM `gaeas-cradle.roster.mtgjson_ban` c) b on a.tcg_id = b.uuid 
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2198,7 +2213,7 @@ database_pull = function(){
   ban_bl_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% select(-uuid,-tcg_id) %>% rename(tcg_id = tcg_id_1) %>% distinct()
   
   
-  con <- gaeas_cradle(my_secrets$patches)
+  con <- gaeas_cradle()
   statement <- paste("SELECT * ","FROM `gaeas-cradle.ban_retail.*` a 
   LEFT JOIN (SELECT uuid,tcg_id,card,c.set,c.rarity,c.number FROM `gaeas-cradle.roster.mtgjson_ban` c) b on a.tcg_id = b.uuid  
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2240,7 +2255,7 @@ database_pull = function(){
           select(-id)
       )
     
-    con <- gaeas_cradle(my_secrets$patches)
+    con <- gaeas_cradle()
     statement <- paste('SELECT * FROM `gaeas-cradle.ban_buylist.*` a 
   LEFT JOIN (SELECT tcg_id,card,c.set,c.rarity,c.number FROM `gaeas-cradle.roster.mtgjson_ban` c) b on a.tcg_id = b.tcg_id
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2262,7 +2277,7 @@ database_pull = function(){
     
     
     
-    con <- gaeas_cradle(my_secrets$patches)
+    con <- gaeas_cradle()
     statement <- paste('SELECT * FROM `gaeas-cradle.ban_retail.*` a 
   LEFT JOIN (SELECT uuid,tcg_id,card,c.set,c.rarity,c.number FROM `gaeas-cradle.roster.mtgjson_ban` c) b on a.tcg_id = b.uuid
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2288,7 +2303,7 @@ database_pull = function(){
     ungroup() %>%
     arrange(Date)
   
-  con <- gaeas_cradle(my_secrets$patches)
+  con <- gaeas_cradle()
   
   statement <- paste('SELECT date,tcg_id,version,condition,language,listing_type,sold_quantity,sell_price FROM `gaeas-cradle.mtg_basket.*` a 
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2341,7 +2356,7 @@ database_pull = function(){
   return(list(gg_data,all_content[[2]],all_content[[3]],all_content[[4]]))
   }else 
     if( (day_in_month > 4)&(day_in_month<=8) ){
-      con <- gaeas_cradle(my_secrets$patches)
+      con <- gaeas_cradle()
       statement <- paste('SELECT most_recent_table, DATE_DIFF( CURRENT_DATE() , most_recent_table ,DAY) days_behind_today
                     FROM (
                         SELECT max(CAST(regexp_replace(regexp_extract(table_name,"\\\\d{4}_\\\\d{2}_\\\\d{2}"),"_","-") as Date)) most_recent_table
@@ -2349,7 +2364,7 @@ database_pull = function(){
                     )',sep = "")
       table_limitations <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble()
       
-      con <- gaeas_cradle(my_secrets$patches)
+      con <- gaeas_cradle()
       statement <- paste('SELECT most_recent_table, DATE_DIFF( CURRENT_DATE() , most_recent_table ,DAY) days_behind_today
                     FROM (
                         SELECT max(CAST(regexp_replace(regexp_extract(table_name,"\\\\d{4}_\\\\d{2}_\\\\d{2}"),"_","-") as Date)) most_recent_table
@@ -2358,7 +2373,7 @@ database_pull = function(){
       table_limitations <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble()
       
 
-      con <- gaeas_cradle(my_secrets$patches)
+      con <- gaeas_cradle()
       statement <- paste("SELECT * ","FROM `gaeas-cradle.ban_buylist.*` a 
   LEFT JOIN (SELECT uuid,tcg_id,card,c.set,c.rarity,c.number FROM `gaeas-cradle.roster.mtgjson_ban` c) b on a.tcg_id = b.uuid 
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2368,7 +2383,7 @@ database_pull = function(){
       jpn_ban_bl_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% select(-uuid,-tcg_id) %>% rename(tcg_id = tcg_id_1) %>% distinct()
       
       
-      con <- gaeas_cradle(my_secrets$patches)
+      con <- gaeas_cradle()
       statement <- paste("SELECT * ","FROM `gaeas-cradle.ban_retail.*` a 
   LEFT JOIN (SELECT uuid,tcg_id,card,c.set,c.rarity,c.number FROM `gaeas-cradle.roster.mtgjson_ban` c) b on a.tcg_id = b.uuid  
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2406,7 +2421,7 @@ database_pull = function(){
               select(-id)
           )
         
-        con <- gaeas_cradle(my_secrets$patches)
+        con <- gaeas_cradle()
         statement <- paste('SELECT * FROM `gaeas-cradle.ban_buylist.*` a 
   LEFT JOIN (SELECT tcg_id,card,c.set,c.rarity,c.number FROM `gaeas-cradle.roster.mtgjson_ban` c) b on a.tcg_id = b.tcg_id
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2428,7 +2443,7 @@ database_pull = function(){
         
         
         
-        con <- gaeas_cradle(my_secrets$patches)
+        con <- gaeas_cradle()
         statement <- paste('SELECT * FROM `gaeas-cradle.ban_retail.*` a 
   LEFT JOIN (SELECT uuid,tcg_id,card,c.set,c.rarity,c.number FROM `gaeas-cradle.roster.mtgjson_ban` c) b on a.tcg_id = b.uuid
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2454,7 +2469,7 @@ database_pull = function(){
         ungroup() %>%
         arrange(Date)
       
-      con <- gaeas_cradle(my_secrets$patches)
+      con <- gaeas_cradle()
       
       statement <- paste('SELECT date,tcg_id,version,condition,language,listing_type,sold_quantity,sell_price FROM `gaeas-cradle.mtg_basket.*` a 
   WHERE _TABLE_SUFFIX BETWEEN
@@ -2510,7 +2525,7 @@ database_pull = function(){
     }else
       if((day_in_month > 8)&(day_in_month<13)){
         check = 1
-        con <- gaeas_cradle(my_secrets$patches)
+        con <- gaeas_cradle()
         statement <- paste('SELECT most_recent_table, DATE_DIFF( CURRENT_DATE() , most_recent_table ,DAY) days_behind_today
                     FROM (
                         SELECT max(CAST(regexp_replace(regexp_extract(table_name,"\\\\d{4}_\\\\d{2}_\\\\d{2}"),"_","-") as Date)) most_recent_table
@@ -2520,7 +2535,7 @@ database_pull = function(){
         table_limitations <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble()
         
         
-        con <- gaeas_cradle(my_secrets$patches)
+        con <- gaeas_cradle()
         statement <- paste('SELECT date, tcg_id, Card_name card,a.set,rarity,number,version hasFoil,condition,a.language,listing_type, sold_quantity,dop,sell_price
                             FROM `gaeas-cradle.mtg_basket.*` a 
                             WHERE _TABLE_SUFFIX BETWEEN
@@ -2529,20 +2544,29 @@ database_pull = function(){
                             ORDER BY Date',sep = "")
         mtg_basket_all_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% distinct()
         
+        statement = "SELECT Card,max(rdate) rdate FROM `gaeas-cradle.roster.mtgjson` GROUP BY Card "
+        rdate_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble() %>% clean_names()
+        
+        mtg_basket_all_tbl = mtg_basket_all_tbl %>%
+          left_join(rdate_tbl) %>%
+          filter(rdate <= Sys.Date()-60)
+        
         basket_copies_sold_tbl = basket_copies_pre_preparations(mtg_basket_all_tbl)
         
         gg_data = post_logic(basket_copies_sold_tbl)
         
         while( (max(gg_data[[1]]$change,na.rm=T)/unique(gg_data[[1]]$change_sum,na.rm=T) >= .65) | (unique(gg_data[[1]]$avg_offer)<=5) ){
           if(check == 1){
-            refined_basket_sale_price = basket_sale_price_tbl %>% 
+            refined_basket_sale_price = basket_copies_sold_tbl %>% 
               filter( tcg_id != unique(gg_data[[1]]$tcg_id)  )
             
             gg_data = post_logic(refined_basket_sale_price)
             
             check = check + 1
           }else{
-            refined_basket_sale_price = refined_basket_sale_price %>% filter( (tcg_id !=  unique(gg_data[[1]]$tcg_id)) )
+            refined_basket_sale_price = basket_copies_sold_tbl %>% 
+              filter( tcg_id != unique(gg_data[[1]]$tcg_id)  ) %>% 
+              filter( (tcg_id !=  unique(gg_data[[1]]$tcg_id)) )
             
             gg_data = post_logic(refined_basket_sale_price)
             
@@ -2565,7 +2589,7 @@ database_pull = function(){
         }else
           if((day_in_month > 13)&(day_in_month<=17)){
             check = 1
-            con <- gaeas_cradle(my_secrets$patches)
+            con <- gaeas_cradle()
             statement <- paste('SELECT most_recent_table, DATE_DIFF( CURRENT_DATE() , most_recent_table ,DAY) days_behind_today
                       FROM (
                           SELECT max(CAST(regexp_replace(regexp_extract(table_name,"\\\\d{4}_\\\\d{2}_\\\\d{2}"),"_","-") as Date)) most_recent_table
@@ -2575,7 +2599,7 @@ database_pull = function(){
             table_limitations <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble()
             
             
-            con <- gaeas_cradle(my_secrets$patches)
+            con <- gaeas_cradle()
             statement <- paste('SELECT date, tcg_id, Card_name card,a.set,rarity,number,version hasFoil,condition,a.language,listing_type, sold_quantity,dop,sell_price
                               FROM `gaeas-cradle.mtg_basket.*` a 
                               WHERE _TABLE_SUFFIX BETWEEN
@@ -2583,6 +2607,14 @@ database_pull = function(){
                               FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL ',table_limitations$days_behind_today ,' DAY))  
                               ORDER BY Date',sep = "")
             mtg_basket_all_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% distinct()
+            
+            statement = "SELECT Card,max(rdate) rdate FROM `gaeas-cradle.roster.mtgjson` GROUP BY Card "
+            rdate_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble() %>% clean_names()
+            
+            mtg_basket_all_tbl = mtg_basket_all_tbl %>%
+              left_join(rdate_tbl) %>%
+              filter(rdate <= Sys.Date()-60)
+            
             
             basket_sale_price_tbl = basket_sale_pre_preparations(mtg_basket_all_tbl)
             #data = basket_sale_price_tbl
@@ -2610,7 +2642,7 @@ database_pull = function(){
               
             }else
               if((day_in_month > 21)&(day_in_month<=23)){
-                con <- gaeas_cradle(my_secrets$patches)
+                con <- gaeas_cradle()
                 statement <- paste('SELECT most_recent_table, DATE_DIFF( CURRENT_DATE() , most_recent_table ,DAY) days_behind_today
                       FROM (
                           SELECT max(CAST(regexp_replace(regexp_extract(table_name,"\\\\d{4}_\\\\d{2}_\\\\d{2}"),"_","-") as Date)) most_recent_table
@@ -2620,7 +2652,7 @@ database_pull = function(){
                 table_limitations <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble()
                 
                 
-                con <- gaeas_cradle(my_secrets$patches)
+                con <- gaeas_cradle()
                 statement <- paste('SELECT date, tcg_id, Card_name card,a.set,rarity,number,version hasFoil,condition,a.language,listing_type, sold_quantity,dop,sell_price
                               FROM `gaeas-cradle.mtg_basket.*` a 
                               WHERE _TABLE_SUFFIX BETWEEN
@@ -2629,6 +2661,13 @@ database_pull = function(){
                               ORDER BY Date',sep = "")
                 mtg_basket_all_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% distinct()
                 
+                statement = "SELECT Card,max(rdate) rdate FROM `gaeas-cradle.roster.mtgjson` GROUP BY Card "
+                rdate_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble() %>% clean_names()
+                
+                mtg_basket_all_tbl = mtg_basket_all_tbl %>%
+                  left_join(rdate_tbl) %>%
+                  filter(rdate <= Sys.Date()-60)
+                
                 basket_sealed_sale_price_tbl = basket_sealed_sale_pre_preparations(mtg_basket_all_tbl)
                 
                 gg_data = post_logic(basket_sealed_sale_price_tbl)
@@ -2636,7 +2675,7 @@ database_pull = function(){
                 return(gg_data)
               }else
                 if((day_in_month > 23)&(day_in_month<=25)){
-                  con <- gaeas_cradle(my_secrets$patches)
+                  con <- gaeas_cradle()
                   statement <- paste('SELECT most_recent_table, DATE_DIFF( CURRENT_DATE() , most_recent_table ,DAY) days_behind_today
                       FROM (
                           SELECT max(CAST(regexp_replace(regexp_extract(table_name,"\\\\d{4}_\\\\d{2}_\\\\d{2}"),"_","-") as Date)) most_recent_table
@@ -2645,7 +2684,7 @@ database_pull = function(){
                       ',sep = "")
                   table_limitations <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble()
                   
-                  con <- gaeas_cradle(my_secrets$patches)
+                  con <- gaeas_cradle()
                   statement <- paste('SELECT date, tcg_id, Card_name card,a.set,rarity,number,version hasFoil,condition,a.language,listing_type, sold_quantity,dop,sell_price
                               FROM `gaeas-cradle.mtg_basket.*` a 
                               WHERE _TABLE_SUFFIX BETWEEN
@@ -2653,6 +2692,13 @@ database_pull = function(){
                               FORMAT_DATE("%Y_%m_%d", DATE_SUB(CURRENT_DATE(), INTERVAL ',table_limitations$days_behind_today ,' DAY))  
                               ORDER BY Date',sep = "")
                   mtg_basket_all_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% distinct()
+                  
+                  statement = "SELECT Card,max(rdate) rdate FROM `gaeas-cradle.roster.mtgjson` GROUP BY Card "
+                  rdate_tbl <- dbSendQuery(con, statement = statement) %>% dbFetch( n = -1) %>% as_tibble() %>% clean_names()
+                  
+                  mtg_basket_all_tbl = mtg_basket_all_tbl %>%
+                    left_join(rdate_tbl) %>%
+                    filter(rdate <= Sys.Date()-60)
                   
                   basket_sealed_copies_sold = basket_sealed_sale_pre_preparations(mtg_basket_all_tbl)
                   
@@ -2688,11 +2734,11 @@ tryCatch({ggsave(filename = "/home/cujo253/mines_of_moria/Essential_Referential_
 # Send an email to my personal gmail to confirm that I do find value in todays content generation, and approve the twitter_bot_poster to post it on my behalf.
 gm_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gmail_ids.json",use_oob=T)
 
-gm_auth(email = patches$patches, use_oob = T)
+gm_auth(email = , use_oob = T)
 
 my_email = gm_mime() %>%
-  gm_to(patches$patches) %>%
-  gm_from(patches$patches) %>%
+  gm_to() %>%
+  gm_from() %>%
   gm_subject(paste0(Sys.Date(),": Twitter Content")) %>%
   gm_text_body(paste0(todays_content[[4]]," 
 
