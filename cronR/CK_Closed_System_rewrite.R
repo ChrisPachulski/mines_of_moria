@@ -1,3 +1,4 @@
+source("config.R")
 require(pacman)
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,bigrquery,broom,anytime,httr,googleAuthR,skimr)
 invisible(clean_names  <- function(.data, unique = FALSE) {
@@ -69,7 +70,7 @@ invisible(moveme       <- function (invec, movecommand) {
 })
 invisible(gaeas_cradle <- function(){
     
-    service_account_file = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json'
+    service_account_file = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json')
     gar_auth_service(service_account_file)
     
     bq_auth(path = service_account_file)
@@ -101,9 +102,9 @@ roster <- dbSendQuery(con, statement = statement) %>% dbFetch(n = -1) %>%mutate(
 
 options(googleAuthR.json_path = 'gaeas-cradle.json')
 
-drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 gc()
 
 ss <- drive_get("Sets")

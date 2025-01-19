@@ -1,3 +1,4 @@
+source("config.R")
 library(pacman)
 pacman::p_load(devtools,googlesheets4,googledrive,httr,jsonlite,RSelenium,tidyverse,anytime,lubridate,rvest,gmailr,googledrive,janitor)
 '%!in%' <- function(x,y)!('%in%'(x,y))

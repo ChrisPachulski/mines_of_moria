@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(tidyverse,anytime,doFuture,lubridate,bigrquery,arules,arulesViz,recommenderlab,tidyquant,ggplot2,plotly)
 
 gaeas_cradle <- function(email){

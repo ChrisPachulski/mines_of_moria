@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(ggpmisc,ggrepel,ggpubr,devtools,googlesheets4,googledrive,httr,jsonlite,RSelenium,tidyverse,anytime,lubridate,rvest,gmailr,googledrive,janitor,futile.logger)
 
 #Functions & packages####
@@ -50,7 +51,7 @@ retry <- function(expr, isError=function(x) "try-error" %in% class(x), maxErrors
 library(pacman)
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery,RSelenium,lubridate,anytime)
 
-Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+Sets <- read.csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "Sets.csv"),stringsAsFactors = TRUE)
 #View(Sets)
 ck_conversion <- read_csv("~/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
 
@@ -191,10 +192,10 @@ write.csv(Shortened_Dictionary, file=csvFileName, row.names = FALSE)
 # Roster Load in ----------------------------------------------------------
 
 
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS//C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "/C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})

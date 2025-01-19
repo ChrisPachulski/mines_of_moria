@@ -1,3 +1,4 @@
+source("config.R")
 #Refresh Our Master Roster####
 content <- fromJSON("https://mtgjson.com/api/v5/AllPrintings.json")
 #library(tidyjson)

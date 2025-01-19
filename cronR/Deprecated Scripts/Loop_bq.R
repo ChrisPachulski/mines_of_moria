@@ -1,3 +1,4 @@
+source("config.R")
 library(tidyverse)
 library(bigrquery)
 library(googlesheets4)

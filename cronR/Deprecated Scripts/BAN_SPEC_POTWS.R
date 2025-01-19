@@ -1,3 +1,4 @@
+source("config.R")
 Sets <- read.csv("/home/cujo253/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
 Exclusion <- data.frame(Sets$Set_Excl,Sets$Excl_Excl)
 colnames(Exclusion) <- c("Set_Excl","Excl_Excl")

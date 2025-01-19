@@ -1,3 +1,4 @@
+source("config.R")
 install.packages("tidyverse")
 install.packages("rvest")
 install.packages("assertthat")

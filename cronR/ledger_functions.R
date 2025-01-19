@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(devtools,googlesheets4,googledrive,httr,jsonlite,RSelenium,tidyverse,anytime,lubridate)
 right = function(text, num_char) {
     substr(text, nchar(text) - (num_char-1), nchar(text))

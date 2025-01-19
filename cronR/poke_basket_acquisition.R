@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(ggpmisc,ggrepel,ggpubr,devtools,googlesheets4,googledrive,httr,jsonlite,RSelenium,tidyverse,anytime,lubridate,rvest,gmailr,googledrive,janitor,futile.logger,reshape2,arules)
 
 #Functions & packages####
@@ -257,7 +258,7 @@ for(q in 1:length(stacked_text$editions)){
         
         tcg_roster = rbind(tcg_roster,roster_grab) %>% distinct()
         
-        setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_poke_rosters/")
+        setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "temp_poke_rosters/"))
         write_csv(tcg_roster,file = paste0(gsub("-","_",stacked_text$editions[q]),".csv"))
         
         # Sometimes the requests come in too quickly and tcg will forbid access, or
@@ -418,7 +419,7 @@ suppressMessages(for(i in 1:nrow(tcg_ids_of_interest)) {
         five_hundred_group = rbind(five_hundred_group,all_basket_date_cleanse_tbl)
         if(i_number == 500) {
             grouping = grouping + 1
-            setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_poke_cards")
+            setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "temp_poke_cards"))
             write_csv(five_hundred_group,file = paste0("mtg_grouping_",grouping,".csv"))
             i_number = 0
             five_hundred_group = NULL
@@ -437,7 +438,7 @@ suppressMessages(for(i in 1:nrow(tcg_ids_of_interest)) {
     },error = function(e){print(paste("Error on id #:",i,sep=" "))})
 })
 
-setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_poke_rosters")
+setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "temp_poke_rosters"))
 set_rosters <-
     list.files(pattern = "*.csv") %>% 
     map_df(~read_csv(.))
@@ -445,7 +446,7 @@ set_rosters <-
 tcg_ids_of_interest$tcg_id[1336]
 
 set_baskets = NULL
-setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_poke_cards")
+setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "temp_poke_cards"))
 set_baskets <-
     list.files(pattern = "*.csv") %>% 
     map_df(~read_csv(.,col_types = cols(.default = "c"))) %>%

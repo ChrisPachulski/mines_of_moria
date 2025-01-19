@@ -1,3 +1,4 @@
+source("config.R")
 #Don't Look at the foundation, it's hideous (& pointless)####
 pacman::p_load(devtools,googlesheets4,googledrive,httr,jsonlite,RSelenium,tidyverse,anytime,lubridate,rvest)
 

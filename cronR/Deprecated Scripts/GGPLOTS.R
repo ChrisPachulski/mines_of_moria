@@ -1,3 +1,4 @@
+source("config.R")
 #Packages####
 install.packages("ggplot2")
 install.packages("readr")

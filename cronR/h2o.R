@@ -1,3 +1,4 @@
+source("config.R")
 install.packages("pacman")
 pacman::p_load(tidyverse,recipes,httr,jsonlite,h2o,ranger,timetk,lubridate,bigrquery,modeltime,modeltime.ensemble,modeltime.gluonts,modeltime.h2o,recipes,rsample,kernlab,glmnet,kknn,earth,tidymodels,rules,doFuture,future,tune,plotly,googlesheets4,googledrive)
 invisible(right <- function(text, num_char) {
@@ -218,8 +219,8 @@ colnames(Entire_Dictionary)
 
 # Database Interaction & Local Uploads ------------------------------------
 
-Sets                  = read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
-ck_conversion         = read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
+Sets                  = read.csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "Sets.csv"),stringsAsFactors = TRUE)
+ck_conversion         = read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "mtgjson_ck_sets.csv"))
 Updated_Tracking_Keys = Entire_Dictionary                                                     %>% 
     replace_na(list(Foil = ""))                                           %>%
     mutate(card          = gsub("\\s\\/\\/.*","",card)                      ,
@@ -1026,7 +1027,7 @@ gs4_auth(email = "pachun95@gmail.com",use_oob=TRUE)
 tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
     #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-    mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+    mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
         rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
         #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
         mutate(Semi = paste(name, Set,sep=""))})

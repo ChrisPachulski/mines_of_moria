@@ -1,3 +1,4 @@
+source("config.R")
 #Packages####
 install.packages("readr")
 library(reshape2)

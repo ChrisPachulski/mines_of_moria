@@ -1,3 +1,4 @@
+source("config.R")
 install.packages("jsonlite")  # JSON manipulation
 install.packages("tidyverse") # Data Manipulation
 install.packages("reshape2") 

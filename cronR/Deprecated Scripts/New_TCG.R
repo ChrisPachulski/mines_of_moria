@@ -1,3 +1,4 @@
+source("config.R")
 library(devtools)
 #devtools::install_github("tidyverse/googlesheets4", force = TRUE)
 library(googlesheets4)

@@ -1,3 +1,4 @@
+source("config.R")
 #Functions & packages####
 invisible(right <- function(text, num_char) {
   substr(text, nchar(text) - (num_char-1), nchar(text))

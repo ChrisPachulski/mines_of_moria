@@ -1,3 +1,4 @@
+source("config.R")
 library("tidyverse")
 library("rvest")
 library("jsonlite")

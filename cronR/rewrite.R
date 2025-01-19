@@ -1,3 +1,4 @@
+source("config.R")
 #Functions & packages####
 install.packages('pacman')
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,readr,dplyr,gargle,httr,bigrquery,RSelenium,janitor,googleAuthR,curl)
@@ -45,7 +46,7 @@ invisible(moveme <- function (invec, movecommand) {
 })
 invisible(gaeas_cradle <- function(){
     
-    service_account_file = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json'
+    service_account_file = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json')
     gar_auth_service(service_account_file)
     
     bq_auth(path = service_account_file)
@@ -302,11 +303,11 @@ Entire_Dictionary$Working_Key <- paste(Entire_Dictionary$card,Entire_Dictionary$
 Shortened_Dictionary <- Entire_Dictionary[c(1,2,3,4,5,8,10,24,6,7,9,13,11,12,22,23)]
 Shortened_Dictionary$Key <- paste(Shortened_Dictionary$card,Shortened_Dictionary$set,Shortened_Dictionary$rarity,Shortened_Dictionary$hasFoil,sep="")
 
-setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/")
+setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", ""))
 csvFileName <- paste("C20_Addition",".csv",sep="")
 write.csv(Shortened_Dictionary, file=csvFileName, row.names = FALSE)
 
-#Shortened_Dictionary = read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv")
+#Shortened_Dictionary = read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"))
 
 con <- gaeas_cradle()
 mybq <- bq_table(project = "gaeas-cradle", dataset = "roster", table = paste("mtgjson",sep=""))
@@ -317,8 +318,8 @@ print("BQ Roster Upload Successful!")
 #CK Buylist####
 
 # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
-drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
+drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 gc()
 
 #drive_create("TCG_Review")
@@ -328,7 +329,7 @@ Sets <- read_sheet(ss,"Sets") %>% mutate_if(is.character,as.factor)
 #View(Sets)
 ck_conversion <- read_sheet(ss,"mtgjson_ck_sets")
 
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
   mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/User/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
@@ -687,8 +688,8 @@ TCG__Best_Sellers <- TCG__Best_Sellers %>% as.data.frame() %>% mutate(Rank = seq
   mutate(Key = trimws(paste(Name,Set,Rarity,hasFoil,sep=""))) %>% relocate(Key, .before = Name)
 
 #sheets_deauth()
-gs4_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/pachun95_a.json")
-gs4_auth(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/pachun95_service_a.json", use_oob=T,cache=T)
+gs4_auth_configure(path = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "pachun95_a.json"))
+gs4_auth(path = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "pachun95_service_a.json"), use_oob=T,cache=T)
 sheet_write(
   TCG__Best_Sellers,
   ss = "/d/1Ef2FgpR-bOg28a8JetHTTIXFH4FeR3eSEj5wpIAVjlU",
@@ -1494,11 +1495,11 @@ Relaxed_CB_CK_Final <- CB_CK_Final[which(CB_CK_Final$Yesterday_BL_Accel > 0),]
 
 #Google Sheets For Easy Communication####
 options(httr_oob_default=TRUE) 
-options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+options(googleAuthR.json_path = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'))
 
-drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 gc()
 #drive_create("TCG_Review")
 #ss <- drive_get("Market_Review")
@@ -1694,17 +1695,17 @@ OVR_KPI_DF <- Unique_Combined_Upper_Esch %>%
 
 
 #Export
-options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+options(googleAuthR.json_path = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'))
 
-drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 gc()
 
 ss <- drive_get("Master_KPI_Review")
 
-gs4_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/pachun95_a.json")
-gs4_auth(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/pachun95_service_a.json", use_oob=T,cache=T)
+gs4_auth_configure(path = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "pachun95_a.json"))
+gs4_auth(path = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "pachun95_service_a.json"), use_oob=T,cache=T)
 sheet_write(
   OVR_KPI_DF,
   ss = ss,
@@ -1779,11 +1780,11 @@ One_Week_CK$CK_Retail<- CK_Market__Tracker[,ncol(CK_Market__Tracker)][match(One_
 One_Week_CK$TCG_Retail<- TCG_Market_Tracker[,ncol(CK_Market__Tracker)][match(One_Week_CK$Key, TCG_Market_Tracker$Key)]
 
 options(httr_oob_default=TRUE) 
-options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+options(googleAuthR.json_path = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'))
 
-drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 gc()
 #drive_create("TCG_Review")
 ss <- drive_get("Sets")
@@ -1840,11 +1841,11 @@ Market_Comparison <- tryCatch({data.frame(All = AT_CK$Key,Three_Week = Three_Wee
                       CK_Buylist_Offer = as.numeric(CK_Inv$data.price_buy[match(Key,CK_Inv$CK_Key)]))
            })
 
-options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+options(googleAuthR.json_path = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'))
 
-drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 ss <- drive_get("CK_VS_TCG_Review")
 sheet_write(Market_Comparison,ss = ss,sheet = "Market_Comparisons")
 

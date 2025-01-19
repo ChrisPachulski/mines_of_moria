@@ -1,3 +1,4 @@
+source("config.R")
 install.packages(c("rvest","tidyverse","RSelenium"))
 library(tidyverse)
 library(rvest)

@@ -1,3 +1,4 @@
+source("config.R")
 #Don't Look at the foundation, it's hideous (& pointless)####
 library(RSelenium)
 library(rvest)

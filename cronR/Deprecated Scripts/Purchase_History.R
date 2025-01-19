@@ -1,3 +1,4 @@
+source("config.R")
 install.packages('RSelenium')
 install.packages("stringi")
 library(stringi)

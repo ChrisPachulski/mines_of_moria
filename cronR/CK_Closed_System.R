@@ -1,3 +1,4 @@
+source("config.R")
 #packages & functions####
 #install.packages("pacman")
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery)
@@ -80,10 +81,10 @@ invisible(gaeas_cradle <- function(email){
   con
 })
 
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})
@@ -117,7 +118,7 @@ BL_Ratio$BL_Ratio_Ranking <- as.numeric(as.character(BL_Ratio$BL_Ratio_Ranking))
 BL_Ratio$BL_Ratio_Value <- as.numeric(as.character(BL_Ratio$BL_Ratio_Value))
 QTY_Ratio$QTY_Ratio_Ranking <- as.numeric(as.character(QTY_Ratio$QTY_Ratio_Ranking))
 QTY_Ratio$QTY_Ratio_Value <- as.numeric(as.character(QTY_Ratio$QTY_Ratio_Value))
-All_Cards <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv",col_types = cols(hasFoil = col_character()))
+All_Cards <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"),col_types = cols(hasFoil = col_character()))
 Printings <- All_Cards %>% group_by(card) %>% add_tally()
 
 currentDate <- Sys.Date()
@@ -299,10 +300,10 @@ drive_auth(email = "pachun95@gmail.com", use_oob=TRUE)
 gs4_auth(email = "pachun95@gmail.com", use_oob=TRUE)
 #View(Wolfs_Targets)
 
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})

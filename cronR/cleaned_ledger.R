@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(fs)
 setwd("/home/cujo253/cronR")
 source("ledger_functions.R")

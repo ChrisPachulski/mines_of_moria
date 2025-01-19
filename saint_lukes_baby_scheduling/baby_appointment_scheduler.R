@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(tidyverse,bigrquery,XML,RCurl,skimr,jsonlite,lubridate, RSelenium,dplyr, googledrive, googlesheets4,zoo,rvest)
 
 IP = "159.203.123.73"

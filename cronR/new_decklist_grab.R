@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(tidyverse,rvest,assertthat,devtools,googlesheets4,googledrive,janitor,broom)
 
 options(httr_oob_default=TRUE) 

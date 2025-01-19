@@ -1,3 +1,4 @@
+source("config.R")
 library(readr)
 library(reshape2)
 library(zoo)

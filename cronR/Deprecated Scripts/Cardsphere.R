@@ -1,3 +1,4 @@
+source("config.R")
 #Cardsphere Mapped out####
 library(XML)
 library(RCurl)

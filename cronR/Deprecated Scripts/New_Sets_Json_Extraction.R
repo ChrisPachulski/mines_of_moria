@@ -1,3 +1,4 @@
+source("config.R")
 library(jsonlite)
 library(readr)
 library(mailR)

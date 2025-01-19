@@ -1,3 +1,4 @@
+source("config.R")
 #Packages & Functions####
 library(tidyverse)
 library(devtools)

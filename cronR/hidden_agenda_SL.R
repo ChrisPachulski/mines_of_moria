@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(lubridate,anytime,tidyverse,rvest,jsonlite,anytime,httr,RSelenium,bigrquery,googlesheets4,googledrive,googlesheets,janitor)
 invisible(gaeas_cradle <- function(email){
     con <- dbConnect(
@@ -756,11 +757,11 @@ sl_wider_mkt_tbl = market_sl_tbl %>%
 
 #final_tbl %>% view()
 options(httr_oob_default=TRUE) 
-options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+options(googleAuthR.json_path = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'))
 
-drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
 gc()
 
 ss <- drive_get("TCGPlayer SL Pricing Sheet")

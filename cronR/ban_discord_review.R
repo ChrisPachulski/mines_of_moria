@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(tidyverse,lubridate,anytime,hms,ggrepel,stringi,ggplot2,textclean,tidymodels,textrecipes)
 setwd("/home/cujo253/mines_of_moria/ban_logs/logs/")
 options(scipen=999)
@@ -859,7 +860,7 @@ exclusive_fm_cleansed_user_overview = exclusive_user_post_review(cleansed_fm_aut
 
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery,RSelenium)
 
-patches = read_json("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
+patches = read_json(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "personal_data.json"))
 
 google_auths = function(){
     options(httr_oob_default=TRUE) 

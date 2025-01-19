@@ -1,3 +1,4 @@
+source("config.R")
 library(RSelenium)
 library(jsonlite)
 library(tidyverse)

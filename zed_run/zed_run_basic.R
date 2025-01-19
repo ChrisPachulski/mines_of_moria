@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(httr,tidyverse,bigrquery,googledrive,googlesheets4,stats)
 horse_data = read_csv(paste("https://zed-odds.netlify.app/horse_db.csv",sep="") )
 gaeas_cradle <- function(email){

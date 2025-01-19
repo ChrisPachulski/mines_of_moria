@@ -1,3 +1,4 @@
+source("config.R")
 moveme <- function (invec, movecommand) {
   movecommand <- lapply(strsplit(strsplit(movecommand, ";")[[1]], 
                                  ",|\\s+"), function(x) x[x != ""])

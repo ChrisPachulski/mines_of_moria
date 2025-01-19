@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(ggpmisc,ggrepel,ggpubr,devtools,googlesheets4,googledrive,httr,jsonlite,RSelenium,tidyverse,anytime,lubridate,rvest,gmailr,googledrive,janitor,futile.logger,reshape2,arules)
 
 #Functions & packages####
@@ -51,10 +52,10 @@ require(pacman)
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,readr,dplyr,gargle,httr,bigrquery,RSelenium,lubridate,anytime)
 
 
-fs::dir_delete('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_rosters/')
-fs::dir_create('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_rosters/')
-fs::dir_delete('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards/')
-fs::dir_create('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards/')
+fs::dir_delete(file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'temp_tcg_rosters/'))
+fs::dir_create(file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'temp_tcg_rosters/'))
+fs::dir_delete(file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'temp_tcg_cards/'))
+fs::dir_create(file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'temp_tcg_cards/'))
 # TCG ID Retrievals -------------------------------------------------------
 
 # This snippet will pull every mtg set that TCG has, ensuring as soon as pre-sales begin we capture those sales immediately
@@ -259,7 +260,7 @@ for(q in 1:length(stacked_text$editions)){
         
         tcg_roster = rbind(tcg_roster,roster_grab) %>% distinct()
         
-        setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_rosters/")
+        setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "temp_tcg_rosters/"))
         write_csv(tcg_roster,file = paste0(gsub("-","_",stacked_text$editions[q]),".csv"))
         
         # Sometimes the requests come in too quickly and tcg will forbid access, or
@@ -419,7 +420,7 @@ suppressMessages(for(i in 1:nrow(tcg_ids_of_interest)) {
         five_hundred_group = rbind(five_hundred_group,all_basket_date_cleanse_tbl)
         if(i_number == 500) {
             grouping = grouping + 1
-            setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards")
+            setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "temp_tcg_cards"))
             write_csv(five_hundred_group,file = paste0("mtg_grouping_",grouping,".csv"))
             i_number = 0
             five_hundred_group = NULL
@@ -438,14 +439,14 @@ suppressMessages(for(i in 1:nrow(tcg_ids_of_interest)) {
     },error = function(e){print(paste("Error on id #:",i,sep=" "))})
 })
 
-setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_rosters")
+setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "temp_tcg_rosters"))
 set_rosters <-
     list.files(pattern = "*.csv") %>% 
     map_df(~read_csv(.,col_types = cols(.default = "c"))) %>%
     as_tibble() 
 
 set_baskets = NULL
-setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/temp_tcg_cards")
+setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "temp_tcg_cards"))
 set_baskets <-
     list.files(pattern = "*.csv") %>% 
     map_df(~read_csv(.,col_types = cols(.default = "c"))) %>%

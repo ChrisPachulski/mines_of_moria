@@ -1,3 +1,4 @@
+source("config.R")
 #install.packages("taRifx")
 library( taRifx )
 library(tidyverse)

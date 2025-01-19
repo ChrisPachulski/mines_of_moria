@@ -1,3 +1,4 @@
+source("config.R")
 #Packages####
 setwd("/home/cujo253/cronR/")
 #install.packages(c("bigrquery","rlang"))

@@ -1,5 +1,6 @@
+source("config.R")
 pacman::p_load(tidyverse,ggplot2,ggrepel,bigrquery,googlesheets4,googledrive,jsonlite,janitor,tidyRSS,lubridate,anytime,rtweet,magick,gmailr,googleAuthR)
-my_secrets = read_json("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
+my_secrets = read_json(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "personal_data.json"))
 '%!in%' <- function(x,y)!('%in%'(x,y))
 
 # Anything with "cyber" in the names are my visuals, with colours based on cyberpunk themes.
@@ -520,7 +521,7 @@ cujos_secret_cyber_bars <- function(df,
 # My data base is named Gaea's Cradle! I have so much imaginative prowess. Let's connect to it with this function.
 invisible(gaeas_cradle <- function(){
     
-    service_account_file = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json'
+    service_account_file = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json')
     gar_auth_service(service_account_file)
     
     bq_auth(path = service_account_file)
@@ -859,10 +860,10 @@ card_kingdom_buylist_review = function(){
   
   #There was a time when the tidyverse had an update on rename and it could go in either direction depending on the VM I was working with
   #SO instead of updating everything and sorting it out intelligently, I went ratchet, and never went back.
-  tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  tryCatch({Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
     #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-    mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+    mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
       rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
       #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
       mutate(Semi = paste(name, Set,sep=""))})
@@ -1590,7 +1591,7 @@ database_pull = function(){
         tweet_content = ""
       }
       
-      media_component <- magick::image_read('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/ban_logo.png')
+      media_component <- magick::image_read(file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'ban_logo.png'))
       media_component = image_flatten(media_component)
 
       return(list(logic,logic_chosen,media_component,tweet_content))
@@ -2726,13 +2727,13 @@ database_pull = function(){
 #Pulls based off the day of the month from 30 content templates
 todays_content = database_pull()
 
-tryCatch({ggsave(filename = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_media.png",dpi = 320, width=3600,height=2400,units="px", device = "png", plot = todays_content[[3]])},
-         error = function(e){ggsave(filename = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_media.png",dpi = 320, width=3600,height=2400,units="px", device = "png", plot = todays_content[[3]] %>% image_ggplot())})
+tryCatch({ggsave(filename = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_media.png"),dpi = 320, width=3600,height=2400,units="px", device = "png", plot = todays_content[[3]])},
+         error = function(e){ggsave(filename = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_media.png"),dpi = 320, width=3600,height=2400,units="px", device = "png", plot = todays_content[[3]] %>% image_ggplot())})
 
 
 # Let's Make a Post (finally) after all that selection work ---------------
 # Send an email to my personal gmail to confirm that I do find value in todays content generation, and approve the twitter_bot_poster to post it on my behalf.
-gm_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gmail_ids.json",use_oob=T)
+gm_auth_configure(path = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "gmail_ids.json"),use_oob=T)
 
 gm_auth(email = , use_oob = T)
 
@@ -2743,7 +2744,7 @@ my_email = gm_mime() %>%
   gm_text_body(paste0(todays_content[[4]]," 
 
 Shall I post this for you, wolf?" )) %>% 
-  gm_attach_file("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_media.png")
+  gm_attach_file(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_media.png"))
 
 gm_send_message(my_email)
 

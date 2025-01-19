@@ -1,3 +1,4 @@
+source("config.R")
 Updated_Tracking_Keys <- read_csv("/home/cujo253/Essential_Referential_CSVS/All_Cards_IKO.csv", col_types = cols(`F/NF` = col_character()))
 colnames(Updated_Tracking_Keys) <- c("Key","name","Set","Rarity","Foil")
 

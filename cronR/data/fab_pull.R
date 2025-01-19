@@ -1,9 +1,10 @@
+source("config.R")
 require("pacman")
 pacman::p_load(tidyverse,httr,bigrquery,googleAuthR,lubridate,jsonlite,data.table,reshape2,rvest, janitor)
 
 gaeas_cradle <- function(){
     
-    service_account_file = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json'
+    service_account_file = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json')
     gar_auth_service(service_account_file)
     
     bq_auth(path = service_account_file)

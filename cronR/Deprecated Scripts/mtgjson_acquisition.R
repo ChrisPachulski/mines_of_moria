@@ -1,3 +1,4 @@
+source("config.R")
 library(tidyjson)
 library(jsonlite)
 

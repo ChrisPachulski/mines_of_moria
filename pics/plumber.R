@@ -1,3 +1,4 @@
+source("config.R")
 #remotes::install_github("rstudio/plumber")
 pacman::p_load(plumber,bigrquery,tidyverse,cyberpunk,ggplot2,ggrepel)
 gaeas_cradle <- function(email){

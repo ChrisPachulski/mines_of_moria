@@ -1,3 +1,4 @@
+source("config.R")
 install.packages("jsonlite")
 install.packages("rvest")
 install.packages("readr")

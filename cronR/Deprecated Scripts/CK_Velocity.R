@@ -1,3 +1,4 @@
+source("config.R")
 library(readr)
 library(googlesheets4)
 library(googledrive)

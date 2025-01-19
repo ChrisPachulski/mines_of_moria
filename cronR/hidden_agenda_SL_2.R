@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(lubridate,anytime,tidyverse,rvest,jsonlite,anytime,httr,RSelenium,bigrquery,googlesheets4,googledrive,googlesheets,janitor)
 invisible(gaeas_cradle <- function(email){
     con <- dbConnect(

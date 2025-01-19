@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(tidyverse,lubridate,anytime,hms,ggrepel,stringi,ggplot2,textclean,tidymodels,textrecipes,tidytext,textdata,wordcloud)
 setwd("/home/cujo253/mines_of_moria/ban_logs/logs/")
 options(scipen=999)
@@ -36,7 +37,7 @@ tool_unique_card_search = function(server_data){
     return(unique_searches)
 }
 
-base_server_data = read_csv('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/base_discord_review_11_28_22.csv')
+base_server_data = read_csv(file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'base_discord_review_11_28_22.csv'))
 
 channel_count = base_server_data %>% clean_names() %>%
     mutate(year_lab = year(date),month_lab = month(date)) %>%

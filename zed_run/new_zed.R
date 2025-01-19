@@ -1,3 +1,4 @@
+source("config.R")
 rm(list = ls())
 options(java.parameters = "-Xmx32g")
 `%!in%` = Negate(`%in%`)

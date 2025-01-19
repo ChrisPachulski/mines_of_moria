@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(tidyverse,rvest,jsonlite,devtools,googlesheets4,googledrive,googlesheets,readr,dplyr,gargle,httr,bigrquery,RSelenium)
 invisible(pokemon_ebay_db <- function(email){
     con <- dbConnect(

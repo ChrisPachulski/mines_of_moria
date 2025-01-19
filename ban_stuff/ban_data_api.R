@@ -1,3 +1,4 @@
+source("config.R")
 require("pacman")
 pacman::p_load(tidyverse,httr,bigrquery,lubridate,jsonlite)
 gaeas_cradle <- function(email){

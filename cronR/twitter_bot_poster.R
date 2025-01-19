@@ -1,10 +1,11 @@
+source("config.R")
 pacman::p_load(tidyverse,ggplot2,ggrepel,bigrquery,googlesheets4,googledrive,jsonlite,janitor,tidyRSS,lubridate,anytime,rtweet,magick,gmailr)
-patches = read_json("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
+patches = read_json(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "personal_data.json"))
 
-gm_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gmail_ids.json",use_oob=T)
+gm_auth_configure(path = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "gmail_ids.json"),use_oob=T)
 gm_auth(email = patches$patches, use_oob = T)
 
-already_posted_logic = read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_bot_logic_check.csv") %>%
+already_posted_logic = read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_bot_logic_check.csv")) %>%
     filter(date == max(date))
 
 if(already_posted_logic$date < Sys.Date()){
@@ -15,7 +16,7 @@ if(already_posted_logic$date < Sys.Date()){
         latest_thread <- gm_thread(gm_id(my_threads)[[1]])
         Subject = latest_thread$messages[[1]]$payload$headers[[6]]$value
         # Overwrite existing media for content in email being manually approved.
-        setwd('/home/cujo253/mines_of_moria/Essential_Referential_CSVS/')
+        setwd(file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', ''))
         attachment = gm_save_attachments(latest_thread$messages[[1]])
         
         # Check my reply against acceptable answers to post content to twitter  
@@ -25,7 +26,7 @@ if(already_posted_logic$date < Sys.Date()){
         
         if(user_response %in% answers){
             
-            twitter_api_keys = read_json("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_api_wolfoftinstreet.json")
+            twitter_api_keys = read_json(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_api_wolfoftinstreet.json"))
             
             # Create a token containing your Twitter keys
             token_for_wolf= rtweet::create_token(
@@ -40,16 +41,16 @@ if(already_posted_logic$date < Sys.Date()){
             
             rtweet::post_tweet(
                 status = tweet_status,
-                media = c("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_media.png"),
+                media = c(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_media.png")),
                 media_alt_text = 'Plot',
                 token = token_for_wolf
             )
             
-            write_csv(tibble(date = Sys.Date(), status = "logic completed"),"/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_bot_logic_check.csv")
+            write_csv(tibble(date = Sys.Date(), status = "logic completed"),file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_bot_logic_check.csv"))
             
         }else{
             
-            gm_auth_configure(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gmail_ids.json",use_oob=T)
+            gm_auth_configure(path = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "gmail_ids.json"),use_oob=T)
             
             gm_auth(email = patches$patches, use_oob = T)
             
@@ -62,11 +63,11 @@ if(already_posted_logic$date < Sys.Date()){
                 gm_text_body(paste0(tweet_status," 
         
         Was not Published. Please publish manually if still desired." )) %>% 
-                gm_attach_file("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_media.png")
+                gm_attach_file(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_media.png"))
             
             gm_send_message(my_email)
             
-            write_csv(tibble(date = Sys.Date(), status = "logic completed"),"/home/cujo253/mines_of_moria/Essential_Referential_CSVS/twitter_bot_logic_check.csv")
+            write_csv(tibble(date = Sys.Date(), status = "logic completed"),file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "twitter_bot_logic_check.csv"))
             
             
         }

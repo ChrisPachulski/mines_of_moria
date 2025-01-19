@@ -1,3 +1,4 @@
+source("config.R")
 #Packages & Needed Functions####
 library(rvest)     # HTML Hacking & Web Scraping
 library(jsonlite)  # JSON manipulation

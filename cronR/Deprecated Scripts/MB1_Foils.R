@@ -1,3 +1,4 @@
+source("config.R")
 library(easypackages)
 libraries("tidyverse","bigrquery","googledrive","devtools","googlesheets4","RSelenium","rvest")
 getwd()

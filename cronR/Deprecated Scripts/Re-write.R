@@ -1,3 +1,4 @@
+source("config.R")
 #Functions & packages####
 invisible(right <- function(text, num_char) {
   substr(text, nchar(text) - (num_char-1), nchar(text))
@@ -278,7 +279,7 @@ Entire_Dictionary$Working_Key <- paste(Entire_Dictionary$card,Entire_Dictionary$
 Shortened_Dictionary <- Entire_Dictionary[c(1,2,3,4,5,8,10,24,6,7,9,13,11,12,22,23)]
 Shortened_Dictionary$Key <- paste(Shortened_Dictionary$card,Shortened_Dictionary$set,Shortened_Dictionary$rarity,Shortened_Dictionary$hasFoil,sep="")
 
-setwd("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/")
+setwd(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", ""))
 csvFileName <- paste("C20_Addition",".csv",sep="")
 write.csv(Shortened_Dictionary, file=csvFileName, row.names = FALSE)
 
@@ -291,14 +292,14 @@ print("BQ Premium Upload Successful!")
 #CK Buylist####
 #Call full buylist via "Raw_CK_Buylist" data frame
 #Call functional (/slimmed) buylist via "CK_Buylist_Retrieved" data frame
-Sets <- read.csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/Sets.csv",stringsAsFactors = TRUE)
+Sets <- read.csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "Sets.csv"),stringsAsFactors = TRUE)
 #View(Sets)
 ck_conversion <- read_csv("~/Essential_Referential_CSVS/mtgjson_ck_sets.csv")
 
-tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+tryCatch({Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
   #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
   rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+  mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
     rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
     #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
     mutate(Semi = paste(name, Set,sep=""))})

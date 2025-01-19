@@ -1,3 +1,4 @@
+source("config.R")
 install.packages("pacman")
 pacman::p_load(tidyverse,httr,bigrquery,lubridate,jsonlite,quantmod,janitor)
 gaeas_cradle <- function(email){

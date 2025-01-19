@@ -1,3 +1,4 @@
+source("config.R")
 #install.packages(c("rvest","tidyverse","RSelenium","googledrive"))
 d#evtools::install_github("tidyverse/googlesheets4", INSTALL_opts= '--no-lock',force = TRUE)
 library(tidyverse)

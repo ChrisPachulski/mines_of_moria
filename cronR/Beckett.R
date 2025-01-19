@@ -1,3 +1,4 @@
+source("config.R")
 pacman::p_load(rvest,tidyverse,RSelenium,bigrquery)
 invisible(chrome <-function(ip){
     eCaps = list(chromeOptions = list (

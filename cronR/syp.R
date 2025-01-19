@@ -1,3 +1,4 @@
+source("config.R")
 install.packages("pacman")
 pacman::p_load(devtools,googlesheets4,googledrive,httr,jsonlite,RSelenium,tidyverse,anytime,lubridate,rvest,bigrquery)
 invisible(gaeas_cradle <- function(email){

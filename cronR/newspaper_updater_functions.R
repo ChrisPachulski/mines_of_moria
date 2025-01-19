@@ -1,5 +1,6 @@
+source("config.R")
 pacman::p_load(chatgpt,jsonlite)
-patches = fromJSON("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
+patches = fromJSON(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "personal_data.json"))
 
 
 three_day_newspaper <- function(){
@@ -42,7 +43,7 @@ gaeas_cradle <- function(){
     #'
     #'
     #'
-    service_account_file = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json'
+    service_account_file = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json')
     gar_auth_service(service_account_file)
     
     bq_auth(path = service_account_file)
@@ -59,22 +60,22 @@ gaeas_cradle <- function(){
 }
 
 google_auths = function(){
-    options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+    options(googleAuthR.json_path = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'))
     
-    drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+    drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
     # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-    gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+    gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
     gc()
     suppressMessages(gc())
 }
 
 set_list = function(){
     
-    options(googleAuthR.json_path = '/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json')
+    options(googleAuthR.json_path = file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'))
     
-    drive_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+    drive_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
     # Don't be a moron, save yourself 4 hours, and share the spreadsheet with the service account email address
-    gs4_auth(path='/home/cujo253/mines_of_moria/Essential_Referential_CSVS/gaeas-cradle.json',cache=TRUE,use_oob = TRUE)
+    gs4_auth(path=file.path(path_prefix, 'mines_of_moria', 'Essential_Referential_CSVS', 'gaeas-cradle.json'),cache=TRUE,use_oob = TRUE)
     gc()
     
     ss <- drive_get("Sets")
@@ -83,10 +84,10 @@ set_list = function(){
     
     ck_conversion <-  suppressMessages(read_sheet(ss,"mtgjson_ck_sets"))
     
-    tryCatch({Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+    tryCatch({Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
         #rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
         rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
-        mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/C20_Addition.csv", col_types = cols(hasFoil = col_character())) %>%
+        mutate(Semi = paste(name, Set,sep=""))},error = function(e){Updated_Tracking_Keys <- read_csv(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "C20_Addition.csv"), col_types = cols(hasFoil = col_character())) %>%
             rename(c("scryfall_id" = "scryfall","tcg_ID"="param","card" = "name", "set" = "Set", "rarity" = "Rarity","hasFoil" = "Foil")) %>%
             #rename(c("scryfall" = "scryfall_id","param"="tcg_ID","name" = "card", "Set" = "set", "Rarity" = "rarity","Foil" = "hasFoil")) %>%
             mutate(Semi = paste(name, Set,sep=""))})
@@ -715,10 +716,10 @@ send_email = function(to,from,email_content){
     
     gm_auth("wolfoftinstreet@gmail.com")
     
-    gm_token_write(path = "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/ban_newspaper_web.rds", key = "GMAILR_KEY")
+    gm_token_write(path = file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "ban_newspaper_web.rds"), key = "GMAILR_KEY")
     
     gm_auth(token = gm_token_read(
-        "/home/cujo253/mines_of_moria/Essential_Referential_CSVS/ban_newspaper_web.rds",
+        file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "ban_newspaper_web.rds"),
         key = "GMAILR_KEY"
     ))
     

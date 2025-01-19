@@ -1,5 +1,6 @@
+source("config.R")
 pacman::p_load(tidyverse,janitor,jsonlite,RMySQL,gmailr,bigrquery,googlesheets4,googledrive,googleAuthR)
-my_secrets = fromJSON("/home/cujo253/mines_of_moria/Essential_Referential_CSVS/personal_data.json")
+my_secrets = fromJSON(file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "personal_data.json"))
 source("/home/cujo253/mines_of_moria/cronR/newspaper_updater_functions.R")
 
 tryCatch({
@@ -90,7 +91,7 @@ tryCatch({
         
         safety_csv = tibble(origin_date = as.Date(min(error_csv(email_body)$origin_date)))
         
-        write_csv(safety_csv,"/home/cujo253/mines_of_moria/Essential_Referential_CSVS/newspaper_safety.csv")
+        write_csv(safety_csv,file.path(path_prefix, "mines_of_moria", "Essential_Referential_CSVS", "newspaper_safety.csv"))
         
         
     }else
