@@ -122,7 +122,6 @@ exclusion = editions         %>%
     mutate_if(is.character,
               as.factor)
 
-
 # You do not need a roster to perform this logic
 printings = roster    %>% 
     group_by(name,foil) %>% 
